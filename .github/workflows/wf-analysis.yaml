@@ -1,0 +1,100 @@
+#
+# SPDX-License-Identifier: MIT
+#
+# Copyright (C) 2025 Daniel Bourdrez. All Rights Reserved.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree or at
+# https://spdx.org/licenses/MIT.html
+#
+
+name: Analysis
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    # Every 3 days at 7 a.m.
+    - cron: '0 7 */3 * *'
+
+permissions: {}
+
+jobs:
+  do-not-submit:
+    name: Do Not Submit
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@92c522aaa6f53af082553dedc1596c80b71aba33
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            release-assets.githubusercontent.com:443
+
+      - name: Check out code
+        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
+        with:
+          persist-credentials: false
+
+      - name: Do Not Submit
+        uses: chainguard-dev/actions/donotsubmit@580a87aaa9cfb0a4d2d3f38f9a679d436f5ec147
+
+  CodeQL:
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/codeql.yaml
+    with:
+      language: go
+
+  CodeScans:
+    permissions:
+      contents: read
+      # Needed to upload the results to code-scanning dashboard.
+      security-events: write
+    uses: ./.github/workflows/scan-go.yaml
+    with:
+      sonar-configuration: .github/sonar-project.properties
+    secrets:
+      github: ${{ secrets.GITHUB_TOKEN }}
+      sonar: ${{ secrets.SONAR_TOKEN }}
+      codecov: ${{ secrets.CODECOV_TOKEN }}
+      semgrep: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+  Scorecard:
+    permissions:
+      # Needed to upload the results to code-scanning dashboard.
+      security-events: write
+      # Needed for GitHub OIDC token if publish_results is true.
+      id-token: write
+      # Needed for nested workflow
+      actions: read
+      # To detect SAST tools
+      checks: read
+      attestations: read
+      contents: read
+      deployments: read
+      issues: read
+      discussions: read
+      packages: read
+      pages: read
+      pull-requests: read
+      repository-projects: read
+      statuses: read
+      models: read
+
+    uses: ./.github/workflows/scorecard.yaml
+    secrets:
+      token: ${{ secrets.SCORECARD_TOKEN }}
