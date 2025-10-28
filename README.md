@@ -1,9 +1,11 @@
-# SLSA Level 4 -ready reusable release workflow for Go projects ![SLSA Level 4](https://raw.githubusercontent.com/slsa-framework/slsa/34a8a0ac7338ef0b4b9e5209afd349e781d3b3e1/docs/images/gh-badge-level4.svg)
+# SLSA Level 3 release workflow
 
-This reusable workflow builds and publishes signed, reproducible release artifacts with SLSA Level 4 provenance and reproducible hermetic builds.
+This reusable workflow builds and publishes signed, reproducible release artifacts with SLSA Level 3 attestations.
+It also gathers reproducibility evidence to ease adoption of future SLSA Level 4 guidance once that level is formally published.
 A verification script is provided to validate the release artifacts, provenance, and reproducibility in `verify-release.sh`.
 
-- 🔒 **SLSA Level 4 Compliance** - Hermetic, reproducible builds with non-falsifiable provenance
+- 🔒 **SLSA Level 3 Compliance** - Hermetic, reproducible builds with non-falsifiable provenance
+- 🧭 **Level 4 Preparation** - Additional reproducibility materials to support an eventual Level 4 definition (no compliance claim yet)
 - 📦 **SBOM** - CycloneDX Software Bill of Materials
 - ✍️ **Keyless Signing** - Cosign signatures with Rekor transparency logs
 - 🗂️ **Complete Metadata** - Commit metadata, environment snapshots, verification reports
@@ -66,9 +68,11 @@ chmod +x verify-release.sh
 ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode reproduce
 ```
 
-## SLSA Compliance Level 4
+## SLSA Alignment
 
-The following table maps the [SLSA v1.2](https://slsa.dev/spec/v1.2-rc1/) and how this workflow meets each requirement.
+> **Note:** The current SLSA specification (v1.1/v1.2) formally defines Levels 1–3. Level 4 remains a work in progress. This workflow implements the Level 3 controls and produces extra reproducibility evidence so teams are prepared when Level 4 solidifies.
+
+The following table maps the [SLSA v1.2](https://slsa.dev/spec/v1.2-rc1/) Level 3 requirements (summarized in `reqs.md`) to how this workflow addresses each safeguard today.
 
 | SLSA v1.2 Requirement | Sub-requirement                                        | Compliant | Evidence                                                                                                                                                                      |
 |-----------------------|--------------------------------------------------------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -100,7 +104,7 @@ The following table maps the [SLSA v1.2](https://slsa.dev/spec/v1.2-rc1/) and ho
 ## Release Verification & Reproducibility Guide
 
 > **Quick Start:** Jump to [Quick Verification](#quick-verification) for basic checks.  
-> **Auditors/Packagers:** See [Complete Verification](#complete-verification-slsa-level-3--level-4) and [Reproducing Builds Locally](#reproducing-builds-locally-slsa-level-4-verification).
+> **Auditors/Packagers:** See [Complete Verification](#complete-verification-level-3--supplemental-evidence) and [Reproducing Builds Locally](#reproducing-builds-locally-supplemental-evidence).
 
 - [Provided resources](#provided-resources)
     - [Build Modes](#artifacts-depending-on-build-modes)
@@ -109,15 +113,14 @@ The following table maps the [SLSA v1.2](https://slsa.dev/spec/v1.2-rc1/) and ho
 - [Quick Verification](#quick-verification)
     - [Automated Verification (Recommended)](#automated-verification-recommended)
     - [Manual Verification](#manual-verification)
-- [Complete Verification (SLSA Level 3 + Level 4)](#complete-verification-slsa-level-3--level-4)
-- [Reproducing Builds Locally (SLSA Level 4 verification)](#reproducing-builds-locally-slsa-level-4-verification)
+- [Complete Verification (Level 3 + supplemental evidence)](#complete-verification-level-3--supplemental-evidence)
+- [Reproducing Builds Locally (supplemental evidence)](#reproducing-builds-locally-supplemental-evidence)
 - [Troubleshooting](#troubleshooting)
 
 ---
 
-This release verification process is designed to provide SLSA Level 3 and Level 4 compliance through strong cryptographic
-assurances about the authenticity, integrity, and provenance of the software artifacts, to reduce the risks from accidental
-nondeterminism to targeted tampering. This verification process ensures:
+This release verification process is designed to provide SLSA Level 3 compliance and collect additional hermetic Level 4 reproducibility evidence.
+This verification process ensures:
 
 | Stakeholder                   | Benefit                                                       |
 |-------------------------------|---------------------------------------------------------------|
@@ -151,21 +154,21 @@ The verification script helps you with automated checks (see [Quick Verification
 
 #### Core Artifacts (Always Present)
 
-| File                                    | Purpose                                                 | SLSA Level and requirement                      |
-|-----------------------------------------|---------------------------------------------------------|-------------------------------------------------|
-| `<repo>-<tag>.tar.gz`                   | Deterministic source archive (git archive + gzip `-n`)  | L3 (primary subject), L4 (reproducible)         |
-| `subjects.sha256`                       | SLSA subjects list (2 lines: archive + checksums.txt)   | L3 (required input to provenance generator)     |
-| `checksums.txt`                         | Aggregated SHA-256 checksums (convenience verification) | L3 (secondary subject), L4 (integrity manifest) |
-| `<repo>-<tag>.tar.gz.{sig,cert,bundle}` | Cosign signatures for tarball                           | L3 (authenticity via Sigstore transparency)     |
-| `checksums.txt.{sig,cert,bundle}`       | Cosign signatures for checksums manifest                | L3 (signed integrity manifest)                  |
-| `sbom.cdx.json`                         | CycloneDX SBOM (dependencies + licenses)                | L3 (attested via GitHub attestations)           |
-| `sbom.cdx.json.{sig,cert,bundle}`       | Cosign signatures for SBOM                              | L3 (signed dependency manifest)                 |
-| `*.intoto.jsonl`                        | SLSA Level 3 provenance attestation                     | L3 (required non-falsifiable provenance)        |
-| `manifest.files.sha256`                 | Per-file SHA-256 (content-addressed mapping)            | L4 (reproducibility verification aid)           |
-| `commit.metadata`                       | Commit lineage (hash, tree, parents, author, subject)   | L4 (build context audit trail)                  |
-| `build.env`                             | Environment snapshot (tools, versions, script hash)     | L4 (reproducibility environment fingerprint)    |
-| `verification.json`                     | Machine-readable reproducibility summary                | L4 (automated policy enforcement)               |
-| `scripts/package-source.sh`             | Canonical packaging recipe                              | L4 (reproducible build script)                  |
+| File                                    | Purpose                                                 | SLSA Alignment                                                    |
+|-----------------------------------------|---------------------------------------------------------|-------------------------------------------------------------------|
+| `<repo>-<tag>.tar.gz`                   | Deterministic source archive (git archive + gzip `-n`)  | L3 (primary subject); deterministic evidence for future levels    |
+| `subjects.sha256`                       | SLSA subjects list (2 lines: archive + checksums.txt)   | L3 (required input to provenance generator)                       |
+| `checksums.txt`                         | Aggregated SHA-256 checksums (convenience verification) | L3 (secondary subject); structured manifest for higher-level use  |
+| `<repo>-<tag>.tar.gz.{sig,cert,bundle}` | Cosign signatures for tarball                           | L3 (authenticity via Sigstore transparency)                       |
+| `checksums.txt.{sig,cert,bundle}`       | Cosign signatures for checksums manifest                | L3 (signed integrity manifest)                                    |
+| `sbom.cdx.json`                         | CycloneDX SBOM (dependencies + licenses)                | L3 (attested via GitHub attestations)                             |
+| `sbom.cdx.json.{sig,cert,bundle}`       | Cosign signatures for SBOM                              | L3 (signed dependency manifest)                                   |
+| `*.intoto.jsonl`                        | SLSA Level 3 provenance attestation                     | L3 (required non-falsifiable provenance)                          |
+| `manifest.files.sha256`                 | Per-file SHA-256 (content-addressed mapping)            | Supplemental reproducibility aid (future Level 4 readiness)       |
+| `commit.metadata`                       | Commit lineage (hash, tree, parents, author, subject)   | Supplemental audit trail (future Level 4 readiness)               |
+| `build.env`                             | Environment snapshot (tools, versions, script hash)     | Supplemental environment fingerprint (future Level 4 readiness)   |
+| `verification.json`                     | Machine-readable reproducibility summary                | Supplemental policy aid (future Level 4 readiness)                |
+| `scripts/package-source.sh`             | Canonical packaging recipe                              | Supplemental reproducible build script (future Level 4 readiness) |
 
 ##### Extended Artifacts (Optional)
 
@@ -206,7 +209,7 @@ chmod +x verify-release.sh
 **Verification Modes:**
 - **quick** (default) - Basic checksum and signature verification (fast, recommended for most users).
 - **full** - Complete verification of all release artifacts including SBOM and provenance.
-- **reproduce** - Hermetic rebuild using the `SLSA_BUILDER_IMAGE` recorded in `build.env` (defaults to `golang:1.25-bookworm@sha256:42d8e9dea06f23d0bfc908826455213ee7f3ed48c43e287a422064220c501be9`), yielding independent SLSA Level 4 evidence.
+- **reproduce** - Hermetic rebuild using the `SLSA_BUILDER_IMAGE` recorded in `build.env` (defaults to `golang:1.25-bookworm@sha256:42d8e9dea06f23d0bfc908826455213ee7f3ed48c43e287a422064220c501be9`), yielding independent evidence for future Level 4 expectations.
 
 The script automatically:
 - Checks for required tools (gh, jq, cosign, openssl, sha256sum/shasum, git for full mode)
@@ -267,7 +270,7 @@ cosign verify-blob \
 
 ---
 
-### Complete Verification (SLSA Level 3 + Level 4)
+### Complete Verification (Level 3 + supplemental evidence)
 
 **For security auditors and compliance requirements.**
 
@@ -438,9 +441,9 @@ Should show:
 
 ---
 
-### Reproducing Builds Locally (SLSA Level 4 verification)
+### Reproducing Builds Locally (preparing SLSA Level 4)
 
-**For distribution packagers and SLSA Level 4 verification.**
+**For distribution packagers and teams gathering future Level 4 evidence.**
 
 #### Lean Mode Reproduction
 

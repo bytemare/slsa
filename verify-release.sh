@@ -11,7 +11,7 @@
 
 # This script automates the verification of SLSA Level 3 compliant releases,
 # including checksum verification, signature verification, and a full, containerized
-# reproducibility check using a digest-pinned Go toolchain (SLSA Level 4 evidence).
+# reproducibility check using a digest-pinned Go toolchain.
 #
 # Usage:
 #   ./verify-release.sh --repo OWNER/REPO --tag TAG [--mode MODE]
