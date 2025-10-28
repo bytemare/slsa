@@ -72,7 +72,7 @@ chmod +x verify-release.sh
 
 > **Note:** The current SLSA specification (v1.1/v1.2) formally defines Levels 1–3. Level 4 remains a work in progress. This workflow implements the Level 3 controls and produces extra reproducibility evidence so teams are prepared when Level 4 solidifies.
 
-The following table maps the [SLSA v1.2](https://slsa.dev/spec/v1.2-rc1/) Level 3 requirements (summarized in `reqs.md`) to how this workflow addresses each safeguard today.
+The following table maps the [SLSA v1.2-rc1](https://slsa.dev/spec/v1.2-rc1/) requirements to how this workflow addresses each safeguard .
 
 | SLSA v1.2 Requirement | Sub-requirement                                        | Compliant | Evidence                                                                                                                                                                      |
 |-----------------------|--------------------------------------------------------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
