@@ -208,7 +208,7 @@ chmod +x verify-release.sh
 
 **Verification Modes:**
 - **quick** (default) - Basic checksum and signature verification (fast, recommended for most users).
-- **full** - Complete verification of all release artifacts including SBOM and provenance.
+- **full** - Complete verification of all release artifacts including SBOM and provenance. This mode uses the official `slsa-verifier` to verify the provenance and additionally provides a holistic verification of the entire release, ensuring that all the pieces of the puzzle (artifacts, signatures, attestations, provenance, and SBOM) fit together correctly, providing a much higher level of confidence in the integrity and authenticity of the release.
 - **reproduce** - Hermetic rebuild using the `SLSA_BUILDER_IMAGE` recorded in `build.env` (defaults to `golang:1.25-bookworm@sha256:42d8e9dea06f23d0bfc908826455213ee7f3ed48c43e287a422064220c501be9`), yielding independent evidence for future Level 4 expectations.
 
 The script automatically:

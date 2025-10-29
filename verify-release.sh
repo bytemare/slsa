@@ -173,6 +173,10 @@ check_tools() {
         required_tools=("docker" "gh")
     fi
 
+    if [[ "$MODE" == "full" ]]; then
+        required_tools+=("slsa-verifier")
+    fi
+
     if ! command -v sha256sum &> /dev/null && ! command -v shasum &> /dev/null; then
         missing_tools+=("sha256sum or shasum")
     fi
@@ -186,6 +190,33 @@ check_tools() {
     if [[ ${#missing_tools[@]} -gt 0 ]]; then
         echo -e "${RED}Error: Missing required tools: ${missing_tools[*]}${NC}" >&2
         exit $EXIT_MISSING_TOOL
+    fi
+
+    return 0
+}
+
+run_slsa_verifier() {
+    verify_step "Verifying provenance with slsa-verifier"
+
+    local provenance_file
+    provenance_file=$(find . -maxdepth 1 -name "*.intoto.jsonl" -type f -print -quit 2>/dev/null)
+    if [[ -z "$provenance_file" ]]; then
+        verify_fail "Provenance file not found"
+        return 1
+    fi
+
+    local artifact
+    artifact=$(find . -maxdepth 1 -name "*.tar.gz" -type f -print -quit 2>/dev/null)
+    if [[ -z "$artifact" ]]; then
+        verify_fail "Source tarball missing"
+        return 1
+    fi
+
+    if slsa-verifier verify-artifact --provenance-path "$provenance_file" --source-uri "github.com/$REPO" --source-tag "$TAG" "$artifact"; then
+        verify_ok
+    else
+        verify_fail "slsa-verifier verification failed"
+        return 1
     fi
 
     return 0
@@ -370,6 +401,7 @@ run_verification() {
         verify_attestations || exit_code=$EXIT_VERIFICATION_FAILED
         verify_provenance_file || exit_code=$EXIT_VERIFICATION_FAILED
         inspect_sbom || exit_code=$EXIT_VERIFICATION_FAILED
+        run_slsa_verifier || exit_code=$EXIT_VERIFICATION_FAILED
     fi
 
     return $exit_code
