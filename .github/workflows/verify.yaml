@@ -1,0 +1,109 @@
+#
+# SPDX-License-Identifier: MIT
+#
+# Copyright (C) 2025 Daniel Bourdrez. All Rights Reserved.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree or at
+# https://spdx.org/licenses/MIT.html
+#
+
+---
+
+name: Verify Release
+
+on:
+  workflow_call:
+    inputs:
+      repo:
+        description: 'Repository in owner/name form to verify'
+        type: string
+        required: true
+      tag:
+        description: 'Release tag to verify'
+        type: string
+        required: true
+      mode:
+        description: 'verify-release.sh mode (quick, full, vsa)'
+        type: string
+        required: false
+        default: full
+      emit_vsa:
+        description: 'Whether to emit a VSA locally (true/false)'
+        type: boolean
+        required: false
+        default: false
+      verifier_id:
+        description: 'Verifier ID to use when emitting a VSA'
+        type: string
+        required: false
+      policy_uri:
+        description: 'Policy URI to embed when emitting a VSA'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@92c522aaa6f53af082553dedc1596c80b71aba33
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            pipelines.actions.githubusercontent.com:443
+
+      - name: Checkout verifier repo
+        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
+        with:
+          fetch-depth: 0
+
+      - name: Install cosign
+        if: ${{ !inputs.dry_run && inputs.sign_blobs }}
+        uses: sigstore/cosign-installer@dbac2a8edec72ca001e3e9f3e53cd0b98f1eb467
+
+      - name: Install slsa-verifier
+        if: ${{ !inputs.dry_run && inputs.sign_blobs }}
+        uses: slsa-framework/slsa-verifier/actions/installer@748161aaed42b2e508301d73c18ccb5be88a948e
+
+      - name: Verify release
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          set -euo pipefail
+          MODE="${{ inputs.mode }}"
+          declare -a EMIT_ARGS=()
+          if [[ "${{ inputs.emit_vsa }}" == 'true' ]]; then
+            EMIT_ARGS+=(--emit-vsa verification-summary.attestation.json)
+            if [[ -n "${{ inputs.verifier_id }}" ]]; then
+              EMIT_ARGS+=(--verifier-id "${{ inputs.verifier_id }}")
+            else
+              EMIT_ARGS+=(--verifier-id "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/verify.yaml@${GITHUB_SHA}")
+            fi
+            if [[ -n "${{ inputs.policy_uri }}" ]]; then
+              EMIT_ARGS+=(--policy-uri "${{ inputs.policy_uri }}")
+            fi
+            EMIT_ARGS+=(--policy-file verify-release.sh)
+          fi
+          ./verify-release.sh \
+            --repo "${{ inputs.repo }}" \
+            --tag "${{ inputs.tag }}" \
+            --mode "$MODE" \
+            "${EMIT_ARGS[@]}"
+
+      - name: Upload VSA artifact
+        if: ${{ inputs.emit_vsa }}
+        uses: actions/upload-artifact@2848b2cda0e5190984587ec6bb1f36730ca78d50
+        with:
+          name: vsa-${{ inputs.tag }}
+          if-no-files-found: error
+          path: |
+            verification-summary.attestation.json
+            verification-summary.attestation.json.bundle

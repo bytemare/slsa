@@ -8,6 +8,8 @@
 # https://spdx.org/licenses/MIT.html
 #
 
+---
+
 name: SLSA Build Level 4 Provenance and GitHub Artifact Attestations
 
 on:
@@ -160,16 +162,13 @@ jobs:
           echo "manifest_path=package/manifest.files.sha256" >> "$GITHUB_OUTPUT"
           echo "metadata_path=package/verification.json" >> "$GITHUB_OUTPUT"
 
-      - name: Install cosign (pinned)
+      - name: Install cosign
         if: ${{ !inputs.dry_run && inputs.sign_blobs }}
-        env:
-          COSIGN_VERSION: v2.4.0
-          COSIGN_SHA256: cd7636b3586a3bdac2d9c8f3b421ed119edcb20499107887fd929211110e8418
-        run: |
-          set -euo pipefail
-          curl -sSLo cosign "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
-          echo "${COSIGN_SHA256}  cosign" | sha256sum -c -
-          install -m 0755 cosign /usr/local/bin/cosign
+        uses: sigstore/cosign-installer@dbac2a8edec72ca001e3e9f3e53cd0b98f1eb467
+
+      - name: Install slsa-verifier
+        if: ${{ !inputs.dry_run && inputs.sign_blobs }}
+        uses: slsa-framework/slsa-verifier/actions/installer@748161aaed42b2e508301d73c18ccb5be88a948e
 
       - name: Generate CycloneDX SBOM (for Go modules)
         uses: CycloneDX/gh-gomod-generate-sbom@171199f37bbd0f611db19484319e87d2ee441f97
@@ -236,6 +235,46 @@ jobs:
             package/build.env
             scripts/package-source.sh
             package/verification.json
+
+      - name: Verify release & emit VSA
+        if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          WORKFLOW_VERIFIER_ID="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/slsa.yaml@${GITHUB_SHA}"
+          POLICY_URI="https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/verify-release.sh"
+          VERIFY_SCRIPT_SHA=$(sha256sum verify-release.sh | awk '{print $1}')
+          ./verify-release.sh \
+            --repo "${GITHUB_REPOSITORY}" \
+            --tag "${TAG}" \
+            --mode full \
+            --emit-vsa verification-summary.attestation.json \
+            --verifier-id "${WORKFLOW_VERIFIER_ID}" \
+            --verifier-version workflow_sha=${GITHUB_SHA} \
+            --verifier-version script_sha=${VERIFY_SCRIPT_SHA} \
+            --policy-uri "${POLICY_URI}" \
+            --policy-file verify-release.sh \
+            --resource-uri "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+
+      - name: Cosign sign VSA
+        if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          set -euo pipefail
+          cosign sign-blob --yes --bundle verification-summary.attestation.json.bundle verification-summary.attestation.json
+
+      - name: Attach VSA assets to release
+        if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" \
+            verification-summary.attestation.json \
+            verification-summary.attestation.json.bundle \
+            --repo "${GITHUB_REPOSITORY}" \
+            --clobber
 
       - name: Upload artifacts (PR dry run)
         if: ${{ inputs.dry_run }}
@@ -306,7 +345,7 @@ jobs:
           echo 'Rebuild determinism verified.'
 
   provenance_slsa:
-    name: SLSA Build Level 4 Provenance
+    name: SLSA Build Level 3 Provenance
     if: ${{ !inputs.dry_run && github.ref_type == 'tag' }}
     needs: [package_source, rebuild_verify]
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0

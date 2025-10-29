@@ -53,6 +53,16 @@ MODE="quick"
 WORK_DIR=""
 OWNER=""
 REPO_NAME=""
+CALLER_PWD="$(pwd -P)"
+EMIT_VSA_PATH=""
+POLICY_URI=""
+POLICY_FILE=""
+VERIFIER_ID=""
+VERIFIER_VERSIONS=()
+VERIFIED_LEVELS=()
+RESOURCE_URI=""
+SLSA_VERSION="1.1"
+TIME_VERIFIED_OVERRIDE=""
 
 # Print a verification step
 verify_step() {
@@ -94,6 +104,17 @@ Optional Arguments:
                        - quick: Basic checksum and signature verification.
                        - full: Complete verification of all release artifacts.
                        - reproduce: Full, containerized reproducibility check.
+                       - vsa: Verify verification-summary attestation only.
+  --emit-vsa PATH      Emit a v1.1 Verification Summary Attestation JSON to PATH
+  --verifier-id URI    Identifier for the verifying entity (required when emitting a VSA)
+  --verifier-version K=V
+                       Additional version metadata for the verifier (repeatable)
+  --policy-uri URI     URI of the verification policy being applied (optional)
+  --policy-file PATH   File used to compute the policy digest (defaults to this script)
+  --verified-level L   Append a verified SLSA level (repeatable, default: SLSA_BUILD_LEVEL_3)
+  --resource-uri URI   Resource URI describing the artifact under verification
+  --time-verified TS   Override the VSA timeVerified field (RFC3339, defaults to current time)
+  --slsa-version VER   Predicated SLSA version for the VSA (default: 1.1)
   --help               Show this help message
 
 Examples:
@@ -123,6 +144,42 @@ parse_args() {
                 MODE="$2"
                 shift 2
                 ;; 
+            --emit-vsa)
+                EMIT_VSA_PATH="$2"
+                shift 2
+                ;; 
+            --verifier-id)
+                VERIFIER_ID="$2"
+                shift 2
+                ;; 
+            --verifier-version)
+                VERIFIER_VERSIONS+=("$2")
+                shift 2
+                ;; 
+            --policy-uri)
+                POLICY_URI="$2"
+                shift 2
+                ;; 
+            --policy-file)
+                POLICY_FILE="$2"
+                shift 2
+                ;; 
+            --verified-level)
+                VERIFIED_LEVELS+=("$2")
+                shift 2
+                ;; 
+            --resource-uri)
+                RESOURCE_URI="$2"
+                shift 2
+                ;; 
+            --time-verified)
+                TIME_VERIFIED_OVERRIDE="$2"
+                shift 2
+                ;; 
+            --slsa-version)
+                SLSA_VERSION="$2"
+                shift 2
+                ;; 
             --help)
                 usage
                 exit $EXIT_SUCCESS
@@ -147,8 +204,8 @@ parse_args() {
         exit $EXIT_MISSING_ARG
     fi
 
-    if [[ "$MODE" != "quick" && "$MODE" != "full" && "$MODE" != "reproduce" ]]; then
-        echo -e "${RED}Error: Invalid mode: $MODE (must be quick, full, or reproduce)${NC}" >&2
+    if [[ "$MODE" != "quick" && "$MODE" != "full" && "$MODE" != "reproduce" && "$MODE" != "vsa" ]]; then
+        echo -e "${RED}Error: Invalid mode: $MODE (must be quick, full, reproduce, or vsa)${NC}" >&2
         usage
         exit $EXIT_MISSING_ARG
     fi
@@ -161,7 +218,45 @@ parse_args() {
         exit $EXIT_MISSING_ARG
     fi
 
+    if [[ ${#VERIFIED_LEVELS[@]} -eq 0 ]]; then
+        VERIFIED_LEVELS=("SLSA_BUILD_LEVEL_3")
+    fi
+
+    if [[ -n "$EMIT_VSA_PATH" ]]; then
+        if [[ -z "$VERIFIER_ID" ]]; then
+            echo -e "${RED}Error: --verifier-id is required when using --emit-vsa${NC}" >&2
+            exit $EXIT_MISSING_ARG
+        fi
+        if [[ -z "$POLICY_URI" ]]; then
+            POLICY_URI="https://github.com/${REPO}/blob/${TAG}/verify-release.sh"
+        fi
+        if [[ -z "$RESOURCE_URI" ]]; then
+            RESOURCE_URI="https://github.com/${REPO}/releases/tag/${TAG}"
+        fi
+    fi
+
+    if [[ -z "$POLICY_FILE" ]]; then
+        POLICY_FILE="$0"
+    fi
+
+    # Normalize paths relative to the invoking directory so the script can chdir safely.
+    if [[ -n "$EMIT_VSA_PATH" && "${EMIT_VSA_PATH:0:1}" != "/" ]]; then
+        EMIT_VSA_PATH="${CALLER_PWD}/${EMIT_VSA_PATH}"
+    fi
+    if [[ -n "$POLICY_FILE" && "${POLICY_FILE:0:1}" != "/" ]]; then
+        POLICY_FILE="${CALLER_PWD}/${POLICY_FILE}"
+    fi
+
     return 0
+}
+
+sha256_of() {
+    local file="$1"
+    if command -v sha256sum &> /dev/null; then
+        sha256sum -- "$file" | awk '{print $1}'
+    else
+        shasum -a 256 -- "$file" | awk '{print $1}'
+    fi
 }
 
 # Check for required tools
@@ -171,9 +266,7 @@ check_tools() {
 
     if [[ "$MODE" == "reproduce" ]]; then
         required_tools=("docker" "gh")
-    fi
-
-    if [[ "$MODE" == "full" ]]; then
+    elif [[ "$MODE" == "full" ]]; then
         required_tools+=("slsa-verifier")
     fi
 
@@ -224,20 +317,31 @@ run_slsa_verifier() {
 
 # Download release artifacts for quick/full modes
 download_artifacts() {
-    local patterns=(
-        "*.tar.gz"
-        "*.bundle"
-        "subjects.sha256"
-        "checksums.txt"
-    )
+    local patterns=()
 
-    if [[ "$MODE" == "full" ]]; then
-        patterns+=(
-            "*.intoto.jsonl"
-            "sbom.cdx.json"
-            "verification.json"
-            "manifest.files.sha256"
+    if [[ "$MODE" == "vsa" ]]; then
+        patterns=(
+            "verification-summary.attestation.json"
+            "verification-summary.attestation.json.bundle"
+            "subjects.sha256"
         )
+    else
+        patterns=(
+            "*.tar.gz"
+            "*.bundle"
+            "subjects.sha256"
+            "checksums.txt"
+        )
+        if [[ "$MODE" == "full" ]]; then
+            patterns+=(
+                "*.intoto.jsonl"
+                "sbom.cdx.json"
+                "verification.json"
+                "manifest.files.sha256"
+                "verification-summary.attestation.json"
+                "verification-summary.attestation.json.bundle"
+            )
+        fi
     fi
 
     verify_step "Downloading release artifacts"
@@ -246,16 +350,31 @@ download_artifacts() {
         gh release download "$TAG" --repo "$REPO" -p "$pattern" >/dev/null 2>&1 || true
     done
 
-    if [[ ! -f subjects.sha256 ]] || [[ ! -f checksums.txt ]]; then
-        verify_fail "Critical files (subjects.sha256, checksums.txt) missing"
-        return 1
-    fi
+    if [[ "$MODE" == "vsa" ]]; then
+        if [[ ! -f verification-summary.attestation.json ]]; then
+            verify_fail "verification-summary.attestation.json missing"
+            return 1
+        fi
+        if [[ ! -f verification-summary.attestation.json.bundle ]]; then
+            verify_fail "verification-summary.attestation.json.bundle missing"
+            return 1
+        fi
+        if [[ ! -f subjects.sha256 ]]; then
+            verify_fail "subjects.sha256 missing (required for digest cross-check)"
+            return 1
+        fi
+    else
+        if [[ ! -f subjects.sha256 ]] || [[ ! -f checksums.txt ]]; then
+            verify_fail "Critical files (subjects.sha256, checksums.txt) missing"
+            return 1
+        fi
 
-    local tarball
-    tarball=$(find . -maxdepth 1 -name "*.tar.gz" -type f -print -quit 2>/dev/null)
-    if [[ -z "$tarball" ]]; then
-        verify_fail "Source tarball missing"
-        return 1
+        local tarball
+        tarball=$(find . -maxdepth 1 -name "*.tar.gz" -type f -print -quit 2>/dev/null)
+        if [[ -z "$tarball" ]]; then
+            verify_fail "Source tarball missing"
+            return 1
+        fi
     fi
 
     verify_ok
@@ -405,6 +524,213 @@ run_verification() {
     fi
 
     return $exit_code
+}
+
+emit_vsa() {
+    local verification_status="$1"
+
+    if [[ -z "$EMIT_VSA_PATH" ]]; then
+        return 0
+    fi
+
+    local artifact_path
+    artifact_path=$(find . -maxdepth 1 -name "*.tar.gz" -type f -print -quit 2>/dev/null)
+    if [[ -z "$artifact_path" ]]; then
+        echo -e "${RED}Unable to emit VSA: source tarball not available in work dir${NC}" >&2
+        return 1
+    fi
+
+    if [[ ! -f subjects.sha256 ]]; then
+        echo -e "${RED}Unable to emit VSA: subjects.sha256 missing${NC}" >&2
+        return 1
+    fi
+
+    local artifact_name artifact_digest
+    artifact_name=$(basename "$artifact_path")
+    artifact_digest=$(head -n1 subjects.sha256 | awk '{print $1}')
+    if [[ -z "$artifact_digest" ]]; then
+        echo -e "${RED}Unable to emit VSA: could not read digest from subjects.sha256${NC}" >&2
+        return 1
+    fi
+
+    local time_verified
+    if [[ -n "$TIME_VERIFIED_OVERRIDE" ]]; then
+        time_verified="$TIME_VERIFIED_OVERRIDE"
+    else
+        time_verified=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    fi
+
+    local resource_uri="${RESOURCE_URI:-"https://github.com/${REPO}/releases/tag/${TAG}"}"
+
+    local verified_levels_json='[]'
+    for level in "${VERIFIED_LEVELS[@]}"; do
+        [[ -z "$level" ]] && continue
+        verified_levels_json=$(jq --arg lvl "$level" '. + [$lvl]' <<<"$verified_levels_json")
+    done
+
+    local version_json="null"
+    if ((${#VERIFIER_VERSIONS[@]})); then
+        version_json='{}'
+        for kv in "${VERIFIER_VERSIONS[@]}"; do
+            if [[ "$kv" != *=* ]]; then
+                continue
+            fi
+            local key="${kv%%=*}"
+            local value="${kv#*=}"
+            version_json=$(jq --arg k "$key" --arg v "$value" '.[$k]=$v' <<<"$version_json")
+        done
+    fi
+
+    local policy_digest=""
+    if [[ -n "$POLICY_FILE" && -f "$POLICY_FILE" ]]; then
+        policy_digest=$(sha256_of "$POLICY_FILE")
+    fi
+
+    local policy_json="null"
+    if [[ -n "$POLICY_URI" ]]; then
+        if [[ -n "$policy_digest" ]]; then
+            policy_json=$(jq -n --arg uri "$POLICY_URI" --arg digest "$policy_digest" '{uri: $uri, digest: {sha256: $digest}}')
+        else
+            policy_json=$(jq -n --arg uri "$POLICY_URI" '{uri: $uri}')
+        fi
+    fi
+
+    local input_attestations='[]'
+    if [[ -f subjects.sha256 ]]; then
+        input_attestations=$(jq --arg uri "https://github.com/${REPO}/releases/download/${TAG}/subjects.sha256" --arg digest "$(sha256_of subjects.sha256)" '. + [{uri: $uri, digest: {sha256: $digest}}]' <<<"$input_attestations")
+    fi
+    local provenance_path
+    provenance_path=$(find . -maxdepth 1 -name "*.intoto.jsonl" -type f -print -quit 2>/dev/null)
+    if [[ -n "$provenance_path" ]]; then
+        input_attestations=$(jq --arg uri "https://github.com/${REPO}/releases/download/${TAG}/$(basename "$provenance_path")" --arg digest "$(sha256_of "$provenance_path")" '. + [{uri: $uri, digest: {sha256: $digest}}]' <<<"$input_attestations")
+    fi
+    if [[ -f sbom.cdx.json ]]; then
+        input_attestations=$(jq --arg uri "https://github.com/${REPO}/releases/download/${TAG}/sbom.cdx.json" --arg digest "$(sha256_of sbom.cdx.json)" '. + [{uri: $uri, digest: {sha256: $digest}}]' <<<"$input_attestations")
+    fi
+
+    local dependency_levels_json='{}'
+
+    local vsa_json
+    vsa_json=$(jq -n \
+        --arg name "$artifact_name" \
+        --arg digest "$artifact_digest" \
+        --arg verifier_id "$VERIFIER_ID" \
+        --arg time_verified "$time_verified" \
+        --arg resource_uri "$resource_uri" \
+        --arg verification_result "$verification_status" \
+        --arg slsa_version "$SLSA_VERSION" \
+        --argjson verified_levels "$verified_levels_json" \
+        --argjson dependency_levels "$dependency_levels_json" \
+        --argjson input_attestations "$input_attestations" \
+        '{
+            "_type": "https://in-toto.io/Statement/v1",
+            "subject": [{
+                "name": $name,
+                "digest": { "sha256": $digest }
+            }],
+            "predicateType": "https://slsa.dev/verification_summary/v1",
+            "predicate": {
+                "verifier": { "id": $verifier_id },
+                "timeVerified": $time_verified,
+                "resourceUri": $resource_uri,
+                "verificationResult": $verification_result,
+                "verifiedLevels": $verified_levels,
+                "dependencyLevels": $dependency_levels,
+                "inputAttestations": $input_attestations,
+                "slsaVersion": $slsa_version
+            }
+        }')
+
+    if [[ "$version_json" != "null" ]]; then
+        vsa_json=$(jq --argjson version "$version_json" '.predicate.verifier.version = $version' <<<"$vsa_json")
+    fi
+
+    if [[ "$policy_json" != "null" ]]; then
+        vsa_json=$(jq --argjson policy "$policy_json" '.predicate.policy = $policy' <<<"$vsa_json")
+    fi
+
+    mkdir -p "$(dirname "$EMIT_VSA_PATH")"
+    printf '%s\n' "$vsa_json" | jq -S '.' > "$EMIT_VSA_PATH"
+    echo "Wrote Verification Summary Attestation: $EMIT_VSA_PATH"
+
+    return 0
+}
+
+verify_vsa_mode() {
+    local vsa_file="verification-summary.attestation.json"
+    local vsa_bundle="${vsa_file}.bundle"
+
+    if [[ ! -f "$vsa_file" ]]; then
+        verify_fail "VSA file not found"
+        return 1
+    fi
+
+    verify_step "Verifying VSA signature"
+    if cosign verify-blob \
+        --bundle "$vsa_bundle" \
+        --certificate-identity-regexp "^https://github\\.com/${OWNER}/" \
+        --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+        "$vsa_file" &> /dev/null; then
+        verify_ok
+    else
+        verify_fail "Cosign verification failed for VSA"
+        return 1
+    fi
+
+    verify_step "Checking VSA predicate fields"
+    local verification_result
+    verification_result=$(jq -r '.predicate.verificationResult // empty' "$vsa_file")
+    if [[ "$verification_result" != "PASSED" ]]; then
+        verify_fail "verificationResult expected PASSED, got '${verification_result:-<unset>}'"
+        return 1
+    fi
+
+    local verified_levels
+    verified_levels=$(jq -r '.predicate.verifiedLevels[]?' "$vsa_file")
+    if [[ -z "$verified_levels" ]]; then
+        verify_fail "verifiedLevels is empty"
+        return 1
+    fi
+    verify_ok
+
+    verify_step "Confirming SLSA level claims"
+    if jq -e '.predicate.verifiedLevels[]? | select(. == "SLSA_BUILD_LEVEL_3")' "$vsa_file" >/dev/null; then
+        verify_ok
+    else
+        verify_fail "verifiedLevels does not include SLSA_BUILD_LEVEL_3"
+        return 1
+    fi
+
+    verify_step "Cross-checking VSA subject digest"
+    local vsa_digest subjects_digest
+    vsa_digest=$(jq -r '.subject[0].digest.sha256 // empty' "$vsa_file")
+    subjects_digest=$(awk 'NR==1 {print $1}' subjects.sha256 2>/dev/null || true)
+    if [[ -z "$vsa_digest" ]]; then
+        verify_fail "VSA subject digest missing"
+        return 1
+    fi
+    if [[ -z "$subjects_digest" ]]; then
+        verify_fail "subjects.sha256 missing digest entry"
+        return 1
+    fi
+    if [[ "$vsa_digest" != "$subjects_digest" ]]; then
+        verify_fail "VSA digest ${vsa_digest} does not match subjects ${subjects_digest}"
+        return 1
+    fi
+    verify_ok
+
+    verify_step "Validating VSA resource URI"
+    local expected_resource
+    expected_resource="https://github.com/${REPO}/releases/tag/${TAG}"
+    local resource_uri
+    resource_uri=$(jq -r '.predicate.resourceUri // empty' "$vsa_file")
+    if [[ "$resource_uri" != "$expected_resource" ]]; then
+        verify_fail "resourceUri expected ${expected_resource}, got '${resource_uri:-<unset>}'"
+        return 1
+    fi
+    verify_ok
+
+    return 0
 }
 
 # --- Reproducibility Check function for reproduce mode ---
@@ -564,15 +890,40 @@ main() {
     fi
 
     local verification_result=$EXIT_SUCCESS
-    run_verification || verification_result=$?
 
-    echo ""
-    if [[ $verification_result -eq $EXIT_SUCCESS ]]; then
-        echo -e "${GREEN}✓ All verifications passed${NC}"
-        echo -e "Release ${TAG} from ${REPO} is authentic and verified\n"
+    if [[ "$MODE" == "vsa" ]]; then
+        verify_vsa_mode || verification_result=$EXIT_VERIFICATION_FAILED
+        echo ""
+        if [[ $verification_result -eq $EXIT_SUCCESS ]]; then
+            echo -e "${GREEN}✓ VSA verification passed${NC}"
+            echo -e "Verification Summary Attestation for ${TAG} is valid\n"
+        else
+            echo -e "${RED}✗ VSA verification failed${NC}"
+            echo -e "Please review the errors above\n"
+        fi
     else
-        echo -e "${RED}✗ Some verifications failed${NC}"
-        echo -e "Please review the errors above\n"
+        run_verification || verification_result=$?
+
+        echo ""
+        if [[ $verification_result -eq $EXIT_SUCCESS ]]; then
+            echo -e "${GREEN}✓ All verifications passed${NC}"
+            echo -e "Release ${TAG} from ${REPO} is authentic and verified\n"
+        else
+            echo -e "${RED}✗ Some verifications failed${NC}"
+            echo -e "Please review the errors above\n"
+        fi
+
+        local vsa_status="FAILED"
+        if [[ $verification_result -eq $EXIT_SUCCESS ]]; then
+            vsa_status="PASSED"
+        fi
+
+        if [[ -n "$EMIT_VSA_PATH" ]]; then
+            if ! emit_vsa "$vsa_status"; then
+                echo -e "${RED}Failed to emit Verification Summary Attestation${NC}" >&2
+                exit $EXIT_VERIFICATION_FAILED
+            fi
+        fi
     fi
 
     echo "Artifacts saved in: $WORK_DIR"

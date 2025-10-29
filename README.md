@@ -9,6 +9,7 @@ A verification script is provided to validate the release artifacts, provenance,
 - 📦 **SBOM** - CycloneDX Software Bill of Materials
 - ✍️ **Keyless Signing** - Cosign signatures with Rekor transparency logs
 - 🗂️ **Complete Metadata** - Commit metadata, environment snapshots, verification reports
+- ✅ **Verification Summary** - Signed VSA documenting policy results for consumers
 - ⚓️ **Native GitHub Attestations** - With the SBOM and build provenance
 - 🛠️ **Easy Integration** - Plug-and-play with minimal setup
 - 📜 **Attached to release** - The example workflow below will attach all artifacts to the GitHub Release
@@ -66,7 +67,12 @@ chmod +x verify-release.sh
 
 # Run containerized reproducibility check (requires Docker)
 ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode reproduce
+
+# Verify the published Verification Summary Attestation only
+./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode vsa
 ```
+
+Need a signed verification summary? Combine `--mode full` with `--emit-vsa <file> --verifier-id <uri>` (plus optional policy metadata) to generate a [Verification Summary Attestation](https://slsa.dev/spec/v1.1/verification_summary).
 
 ## SLSA Alignment
 
@@ -154,21 +160,22 @@ The verification script helps you with automated checks (see [Quick Verification
 
 #### Core Artifacts (Always Present)
 
-| File                                    | Purpose                                                 | SLSA Alignment                                                    |
-|-----------------------------------------|---------------------------------------------------------|-------------------------------------------------------------------|
-| `<repo>-<tag>.tar.gz`                   | Deterministic source archive (git archive + gzip `-n`)  | L3 (primary subject); deterministic evidence for future levels    |
-| `subjects.sha256`                       | SLSA subjects list (2 lines: archive + checksums.txt)   | L3 (required input to provenance generator)                       |
-| `checksums.txt`                         | Aggregated SHA-256 checksums (convenience verification) | L3 (secondary subject); structured manifest for higher-level use  |
-| `<repo>-<tag>.tar.gz.{sig,cert,bundle}` | Cosign signatures for tarball                           | L3 (authenticity via Sigstore transparency)                       |
-| `checksums.txt.{sig,cert,bundle}`       | Cosign signatures for checksums manifest                | L3 (signed integrity manifest)                                    |
-| `sbom.cdx.json`                         | CycloneDX SBOM (dependencies + licenses)                | L3 (attested via GitHub attestations)                             |
-| `sbom.cdx.json.{sig,cert,bundle}`       | Cosign signatures for SBOM                              | L3 (signed dependency manifest)                                   |
-| `*.intoto.jsonl`                        | SLSA Level 3 provenance attestation                     | L3 (required non-falsifiable provenance)                          |
-| `manifest.files.sha256`                 | Per-file SHA-256 (content-addressed mapping)            | Supplemental reproducibility aid (future Level 4 readiness)       |
-| `commit.metadata`                       | Commit lineage (hash, tree, parents, author, subject)   | Supplemental audit trail (future Level 4 readiness)               |
-| `build.env`                             | Environment snapshot (tools, versions, script hash)     | Supplemental environment fingerprint (future Level 4 readiness)   |
-| `verification.json`                     | Machine-readable reproducibility summary                | Supplemental policy aid (future Level 4 readiness)                |
-| `scripts/package-source.sh`             | Canonical packaging recipe                              | Supplemental reproducible build script (future Level 4 readiness) |
+| File                                                  | Purpose                                                                  | SLSA Alignment                                                    |
+|-------------------------------------------------------|--------------------------------------------------------------------------|-------------------------------------------------------------------|
+| `<repo>-<tag>.tar.gz`                                 | Deterministic source archive (git archive + gzip `-n`)                   | L3 (primary subject); deterministic evidence for future levels    |
+| `subjects.sha256`                                     | SLSA subjects list (2 lines: archive + checksums.txt)                    | L3 (required input to provenance generator)                       |
+| `checksums.txt`                                       | Aggregated SHA-256 checksums (convenience verification)                  | L3 (secondary subject); structured manifest for higher-level use  |
+| `<repo>-<tag>.tar.gz.{sig,cert,bundle}`               | Cosign signatures for tarball                                            | L3 (authenticity via Sigstore transparency)                       |
+| `checksums.txt.{sig,cert,bundle}`                     | Cosign signatures for checksums manifest                                 | L3 (signed integrity manifest)                                    |
+| `sbom.cdx.json`                                       | CycloneDX SBOM (dependencies + licenses)                                 | L3 (attested via GitHub attestations)                             |
+| `sbom.cdx.json.{sig,cert,bundle}`                     | Cosign signatures for SBOM                                               | L3 (signed dependency manifest)                                   |
+| `*.intoto.jsonl`                                      | SLSA Level 3 provenance attestation                                      | L3 (required non-falsifiable provenance)                          |
+| `manifest.files.sha256`                               | Per-file SHA-256 (content-addressed mapping)                             | Supplemental reproducibility aid (future Level 4 readiness)       |
+| `commit.metadata`                                     | Commit lineage (hash, tree, parents, author, subject)                    | Supplemental audit trail (future Level 4 readiness)               |
+| `build.env`                                           | Environment snapshot (tools, versions, script hash)                      | Supplemental environment fingerprint (future Level 4 readiness)   |
+| `verification.json`                                   | Machine-readable reproducibility summary                                 | Supplemental policy aid (future Level 4 readiness)                |
+| `verification-summary.attestation.json` (+ `.bundle`) | Verification Summary Attestation documenting verification policy results | Supplemental signed verification summary for consumers            |
+| `scripts/package-source.sh`                           | Canonical packaging recipe                                               | Supplemental reproducible build script (future Level 4 readiness) |
 
 ##### Extended Artifacts (Optional)
 
@@ -323,7 +330,7 @@ echo "✅ Per-file content verified"
 cd "${MANIFEST_DIR}"
 ```
 
-### #5. Verify Signatures (Alternative Methods)
+#### 5. Verify Signatures (Alternative Methods)
 
 **Option A: Bundle files (recommended)**
 ```bash
@@ -403,7 +410,30 @@ jq -r '.dsseEnvelope.payload' "$PROV" | base64 -d | jq '.'
 
 This allows an auditor to manually confirm the build type, builder ID, and other critical details.
 
-#### 9. Inspect SBOM
+#### 9. Verify Verification Summary Attestation
+
+```bash
+gh release download <tag> -p 'verification-summary.attestation.json*'
+cosign verify-blob \
+  --bundle verification-summary.attestation.json.bundle \
+  --certificate-identity-regexp "^https://github\.com/${OWNER}/" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  verification-summary.attestation.json && echo "✅ VSA signature verified"
+
+jq -r '.predicate.verificationResult' verification-summary.attestation.json
+jq -r '.predicate.verifiedLevels[]' verification-summary.attestation.json
+```
+
+Confirm `verificationResult` is `PASSED` and that `verifiedLevels` lists at least `SLSA_BUILD_LEVEL_3`. You can also validate the recorded policy digest:
+
+```bash
+jq -r '.predicate.policy.digest.sha256' verification-summary.attestation.json
+```
+
+Push this digest through your own copy of the policy source to ensure it matches.
+Prefer automation? Run `./verify-release.sh --repo ${OWNER}/${REPO} --tag <tag> --mode vsa` to execute the signed verification summary checks end-to-end.
+
+#### 10. Inspect SBOM
 
 First, download the SBOM file:
 ```bash
@@ -419,7 +449,7 @@ jq '.components | length' sbom.cdx.json
 jq -r '.components[] | "\(.name)@\(.version)"' sbom.cdx.json | head -20
 ```
 
-#### 10. Check Reproducibility Report
+#### 11. Check Reproducibility Report
 
 First, download the verification report:
 ```bash
