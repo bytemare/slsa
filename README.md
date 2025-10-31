@@ -1,8 +1,8 @@
-# SLSA Level 3 Release and Verification workflows
+# SLSA Level 3 Release and Verification Workflows
 
-Theses reusable workflow build and publish signed, reproducible release artifacts with SLSA Level 3 attestations, and enable you to verify them, including VSAs.
-They also gather reproducibility evidence to ease adoption of currently being defined SLSA Level 4, once that level is formally published.
-A verification script is provided to validate the release artifacts, provenance, and reproducibility in `verify-release.sh`.
+These reusable workflows build and publish signed, reproducible release artifacts with SLSA Level 3 attestations, and provide a companion verifier (including VSA checks) that consumers can drop into their own CI.
+They also gather reproducibility evidence to ease adoption of the upcoming SLSA Level 4 guidance once that level is formally published.
+The `verify-release.sh` helper drives the same verification policy locally or in automation.
 
 - 🔒 **SLSA Level 3 Compliance** - Hermetic, reproducible builds with non-falsifiable provenance
 - 🧭 **Level 4 Preparation** - Additional reproducibility materials to support an eventual Level 4 definition (no compliance claim yet)
@@ -98,11 +98,42 @@ jobs:
 
 For interactive runs, trigger `.github/workflows/wf-verify.yaml` via *Run workflow*; it forwards to the same reusable verifier with sensible defaults.
 
+## Inform your users
+
+You can use the following snippet in your repo to inform your consumers of the release integrity properties:
+
+
+> ## Release Integrity (SLSA Level 3)
+> Releases are built with the reusable [bytemare/slsa](https://github.com/bytemare/slsa) workflow and ship the evidence required for SLSA Level 3 compliance:
+> 
+> - 📦 Artifacts are uploaded to the release page, and include the deterministic source archive plus subjects.sha256, signed SBOM (sbom.cdx.json), GitHub provenance (*.intoto.jsonl), a reproducibility report (verification.json), and a signed Verification Summary Attestation (verification-summary.attestation.json[.bundle]).
+> - ✍️ All artifacts are signed using [Sigstore](https://sigstore.dev) with transparency via [Rekor](https://rekor.sigstore.dev).
+> - ✅ Verification (or look at the latest document of [bytemare/slsa](https://github.com/bytemare/slsa) :
+>  ```shell
+>   curl -sSL https://raw.githubusercontent.com/bytemare/slsa/main/verify-release.sh -o verify-release.sh
+>   chmod +x verify-release.sh
+>   ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode full
+>  ```
+>   Add `--mode reproduce` to rerun the build in a container, or `--mode vsa` to validate just the verification summary.
+> - 🔁 Automated verification with the reusable verifier from [bytemare/slsa](https://github.com/bytemare/slsa) into your CI
+>  ```yaml
+>   jobs:
+>       verify-release:
+>           uses: bytemare/slsa/.github/workflows/verify.yaml@<pinned-commit>
+>           with:
+>               repo: <owner>/<repo>
+>               tag: <tag>
+>               mode: full,reproduce
+>               emit_vsa: true
+>  ```
+
 ## SLSA Alignment
 
-> **Note:** The current SLSA specification (v1.1/v1.2) formally defines Levels 1–3. Level 4 remains a work in progress. This workflow implements the Level 3 controls and produces extra reproducibility evidence so teams are prepared when Level 4 solidifies.
+> **Note:** The current SLSA specification (v1.1/v1.2) formally defines Levels 1–3. Level 4 remains a work in progress. This workflow implements the Level 3 controls and produces extra reproducibility evidence so to be prepared when Level 4 publication solidifies.
 
 The following table maps the [SLSA v1.2-rc1](https://slsa.dev/spec/v1.2-rc1/) requirements to how this workflow addresses each safeguard .
+
+> ⚠️ **Disclaimer:** While this workflow implements the controls listed below, achieving SLSA compliance also depends on organizational policies and practices beyond the scope of this automation, like mandatory reviews from at least one other person. Users should ensure that their overall processes align with SLSA requirements.
 
 | SLSA v1.2 Requirement | Sub-requirement                                        | Compliant | Evidence                                                                                                                                                                      |
 |-----------------------|--------------------------------------------------------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -110,7 +141,6 @@ The following table maps the [SLSA v1.2-rc1](https://slsa.dev/spec/v1.2-rc1/) re
 | Version Control       | All source code is version controlled.                 | Yes       | The project is hosted on GitHub.                                                                                                                                              |
 | Verified History      | Commits are signed.                                    | Yes       | The project enforces signed commits.                                                                                                                                          |
 | Retained Indefinitely | Source is retained indefinitely.                       | Yes       | The project is hosted on GitHub.                                                                                                                                              |
-| Two-Person Review     | All changes are reviewed by at least one other person. | No        | The project does not enforce two-person review on all changes.                                                                                                                |
 | **Build**             |                                                        |           |                                                                                                                                                                               |
 | Scripted Build        | The build process is fully scripted.                   | Yes       | The build is scripted in `.github/workflows/slsa.yaml` and `scripts/package-source.sh`.                                                                                       |
 | Build Service         | The build is performed by a build service.             | Yes       | The build is performed by GitHub Actions.                                                                                                                                     |
@@ -149,7 +179,7 @@ The following table maps the [SLSA v1.2-rc1](https://slsa.dev/spec/v1.2-rc1/) re
 
 ---
 
-This release verification process is designed to provide SLSA Level 3 compliance and collect additional hermetic Level 4 reproducibility evidence.
+This release verification process is designed to verify SLSA Level 3 compliance and collect additional hermetic Level 4 reproducibility evidence.
 This verification process ensures:
 
 | Stakeholder                   | Benefit                                                       |
