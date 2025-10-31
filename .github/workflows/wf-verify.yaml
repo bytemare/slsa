@@ -10,7 +10,7 @@
 
 ---
 
-name: Verify (examples)
+name: Verify SLSA Compliance
 
 on:
   workflow_dispatch:
@@ -23,7 +23,7 @@ on:
         description: 'Release tag to verify'
         required: true
       mode:
-        description: 'Verification mode'
+        description: 'Verification mode ("quick", "full", or "full,reproduce")'
         required: false
         default: full
       emit_vsa:
@@ -34,16 +34,6 @@ on:
 permissions: {}
 
 jobs:
-  full_verification:
-    if: ${{ github.event.inputs.mode == 'full' || !github.event.inputs.mode }}
-    uses: ./.github/workflows/verify.yaml
-    with:
-      repo: ${{ github.event.inputs.repo || github.repository }}
-      tag: ${{ github.event.inputs.tag }}
-      mode: ${{ github.event.inputs.mode || 'full' }}
-      emit_vsa: ${{ github.event.inputs.emit_vsa == 'true' }}
-      verifier_id: https://github.com/${{ github.repository }}/.github/workflows/wf-verify.yaml@${{ github.sha }}
-
   quick_verification:
     if: ${{ github.event.inputs.mode == 'quick' }}
     uses: ./.github/workflows/verify.yaml
@@ -51,6 +41,24 @@ jobs:
       repo: ${{ github.event.inputs.repo || github.repository }}
       tag: ${{ github.event.inputs.tag }}
       mode: quick
+
+  full_verification:
+    if: ${{ contains(github.event.inputs.mode, 'full') || !github.event.inputs.mode }}
+    uses: ./.github/workflows/verify.yaml
+    with:
+      repo: ${{ github.event.inputs.repo || github.repository }}
+      tag: ${{ github.event.inputs.tag }}
+      mode: ${{ github.event.inputs.mode || 'full' }}
+      emit_vsa: ${{ github.event.inputs.emit_vsa == 'true' }}
+      verifier_id: https://github.com/bytemare/slsa/.github/workflows/verify.yaml
+
+  reproduce_verification:
+    if: contains(github.event.inputs.mode, 'reproduce')
+    uses: ./.github/workflows/verify.yaml
+    with:
+      repo: ${{ github.event.inputs.repo || github.repository }}
+      tag: ${{ github.event.inputs.tag }}
+      mode: reproduce
 
   vsa_only:
     if: ${{ github.event.inputs.mode == 'vsa' }}

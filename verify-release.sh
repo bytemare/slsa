@@ -121,6 +121,10 @@ Examples:
   $0 --repo bytemare/workflows --tag 0.0.4
   $0 --repo bytemare/workflows --tag 0.0.4 --mode full
   $0 --repo bytemare/workflows --tag 0.0.4 --mode reproduce
+  $0 --repo bytemare/workflows --tag 0.0.4 --mode vsa
+  $0 --repo bytemare/workflows --tag 0.0.4 --mode full --emit-vsa my.vsa.json --verifier-id https://example.com/verifier
+
+Note: VSA emission happens after all checks succeed to preserve a verifier/producer separation—a consumer or CI policy can trust the summary because it was generated post-release by the verification workflow, not during packaging.
 
 EOF
 
@@ -521,6 +525,7 @@ run_verification() {
         verify_provenance_file || exit_code=$EXIT_VERIFICATION_FAILED
         inspect_sbom || exit_code=$EXIT_VERIFICATION_FAILED
         run_slsa_verifier || exit_code=$EXIT_VERIFICATION_FAILED
+        verify_vsa_attestation || exit_code=$EXIT_VERIFICATION_FAILED
     fi
 
     return $exit_code
@@ -656,7 +661,7 @@ emit_vsa() {
     return 0
 }
 
-verify_vsa_mode() {
+verify_vsa_attestation() {
     local vsa_file="verification-summary.attestation.json"
     local vsa_bundle="${vsa_file}.bundle"
 
@@ -892,7 +897,7 @@ main() {
     local verification_result=$EXIT_SUCCESS
 
     if [[ "$MODE" == "vsa" ]]; then
-        verify_vsa_mode || verification_result=$EXIT_VERIFICATION_FAILED
+        verify_vsa_attestation || verification_result=$EXIT_VERIFICATION_FAILED
         echo ""
         if [[ $verification_result -eq $EXIT_SUCCESS ]]; then
             echo -e "${GREEN}✓ VSA verification passed${NC}"

@@ -8,8 +8,6 @@
 # https://spdx.org/licenses/MIT.html
 #
 
----
-
 name: Verify Release
 
 on:
@@ -24,19 +22,20 @@ on:
         type: string
         required: true
       mode:
-        description: 'verify-release.sh mode (quick, full, vsa)'
+        description: 'Comma-separated verify-release modes (quick,full,reproduce,vsa)'
         type: string
         required: false
         default: full
       emit_vsa:
-        description: 'Whether to emit a VSA locally (true/false)'
+        description: 'Emit a Verification Summary Attestation during full mode'
         type: boolean
         required: false
         default: false
       verifier_id:
-        description: 'Verifier ID to use when emitting a VSA'
+        description: 'Verifier identifier to embed when emitting a VSA'
         type: string
         required: false
+        default: 'https://github.com/bytemare/slsa/.github/workflows/verify.yaml'
       policy_uri:
         description: 'Policy URI to embed when emitting a VSA'
         type: string
@@ -58,45 +57,136 @@ jobs:
             api.github.com:443
             github.com:443
             objects.githubusercontent.com:443
+            uploads.github.com:443
+            github-releases.githubusercontent.com:443
             pipelines.actions.githubusercontent.com:443
+            proxy.golang.org:443
+            sum.golang.org:443
+            storage.googleapis.com:443
+            auth.docker.io:443
+            registry-1.docker.io:443
 
       - name: Checkout verifier repo
         uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
         with:
           fetch-depth: 0
 
-      - name: Install cosign
-        if: ${{ !inputs.dry_run && inputs.sign_blobs }}
-        uses: sigstore/cosign-installer@dbac2a8edec72ca001e3e9f3e53cd0b98f1eb467
-
-      - name: Install slsa-verifier
-        if: ${{ !inputs.dry_run && inputs.sign_blobs }}
-        uses: slsa-framework/slsa-verifier/actions/installer@748161aaed42b2e508301d73c18ccb5be88a948e
-
-      - name: Verify release
-        env:
-          COSIGN_EXPERIMENTAL: 1
+      - name: Prepare tooling
+        id: setup
+        shell: bash
         run: |
           set -euo pipefail
-          MODE="${{ inputs.mode }}"
-          declare -a EMIT_ARGS=()
-          if [[ "${{ inputs.emit_vsa }}" == 'true' ]]; then
-            EMIT_ARGS+=(--emit-vsa verification-summary.attestation.json)
-            if [[ -n "${{ inputs.verifier_id }}" ]]; then
-              EMIT_ARGS+=(--verifier-id "${{ inputs.verifier_id }}")
-            else
-              EMIT_ARGS+=(--verifier-id "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/verify.yaml@${GITHUB_SHA}")
-            fi
-            if [[ -n "${{ inputs.policy_uri }}" ]]; then
-              EMIT_ARGS+=(--policy-uri "${{ inputs.policy_uri }}")
-            fi
-            EMIT_ARGS+=(--policy-file verify-release.sh)
+
+          modes_input="${{ inputs.mode }}"
+          if [[ -z "$modes_input" ]]; then
+            modes_input="full"
           fi
-          ./verify-release.sh \
-            --repo "${{ inputs.repo }}" \
-            --tag "${{ inputs.tag }}" \
-            --mode "$MODE" \
-            "${EMIT_ARGS[@]}"
+
+          IFS=',' read -ra raw_modes <<< "$modes_input"
+          declare -a modes=()
+          need_verifier=false
+          need_docker=false
+
+          for raw_mode in "${raw_modes[@]}"; do
+            mode=$(echo "$raw_mode" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+            if [[ -z "$mode" ]]; then
+              continue
+            fi
+            case "$mode" in
+              quick|full|vsa)
+                need_verifier=true
+                ;;
+              reproduce)
+                need_docker=true
+                ;;
+              *)
+                echo "Unsupported mode '$raw_mode'" >&2
+                exit 1
+                ;;
+            esac
+            modes+=("$mode")
+          done
+
+          if [[ ${#modes[@]} -eq 0 ]]; then
+            modes+=(full)
+            need_verifier=true
+          fi
+
+          echo "modes=$(IFS=,; echo "${modes[*]}")" >> "$GITHUB_OUTPUT"
+          echo "need_verifier=$need_verifier" >> "$GITHUB_OUTPUT"
+          echo "need_docker=$need_docker" >> "$GITHUB_OUTPUT"
+
+          if [[ "$need_verifier" == "true" ]]; then
+            COSIGN_VERSION=v2.4.0
+            COSIGN_SHA256=cd7636b3586a3bdac2d9c8f3b421ed119edcb20499107887fd929211110e8418
+            curl -sSLo cosign "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
+            echo "${COSIGN_SHA256}  cosign" | sha256sum -c -
+            install -m 0755 cosign /usr/local/bin/cosign
+
+            go install github.com/slsa-framework/slsa-verifier/v2/cmd/slsa-verifier@v2.7.0
+            echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          fi
+
+          if [[ "$need_docker" == "true" ]]; then
+            docker info >/dev/null
+            docker pull golang:1.25-bookworm@sha256:42d8e9dea06f23d0bfc908826455213ee7f3ed48c43e287a422064220c501be9 >/dev/null
+          fi
+
+      - name: Run verification modes
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          IFS=',' read -ra modes <<< "${{ steps.setup.outputs.modes }}"
+          emit_vsa="${{ inputs.emit_vsa }}"
+          verifier_id="${{ inputs.verifier_id }}"
+          policy_uri="${{ inputs.policy_uri }}"
+
+          declare -a emit_args=()
+          if [[ "$emit_vsa" == "true" ]]; then
+            emit_args+=(--emit-vsa verification-summary.attestation.json)
+            emit_args+=(--policy-file verify-release.sh)
+            emit_args+=(--verifier-id "$verifier_id")
+            if [[ -n "$policy_uri" ]]; then
+              emit_args+=(--policy-uri "$policy_uri")
+            fi
+          fi
+
+          saw_full=false
+          for mode in "${modes[@]}"; do
+            if [[ -z "$mode" ]]; then
+              continue
+            fi
+            case "$mode" in
+              quick|full|reproduce|vsa) : ;;
+              *) echo "Unsupported mode '$mode'" >&2; exit 1 ;;
+            esac
+
+            declare -a extra_args=()
+            if [[ "$mode" == "full" ]]; then
+              saw_full=true
+              if [[ "$emit_vsa" == "true" ]]; then
+                extra_args+=("${emit_args[@]}")
+              fi
+            elif [[ "$mode" == "reproduce" && "$emit_vsa" == "true" ]]; then
+              echo "emit_vsa is only supported with full mode" >&2
+              exit 1
+            fi
+
+            echo "Running verify-release.sh in $mode mode"
+            ./verify-release.sh \
+              --repo "${{ inputs.repo }}" \
+              --tag "${{ inputs.tag }}" \
+              --mode "$mode" \
+              "${extra_args[@]}"
+          done
+
+          if [[ "$emit_vsa" == "true" && "$saw_full" != "true" ]]; then
+            echo "emit_vsa requested but no full mode was executed" >&2
+            exit 1
+          fi
 
       - name: Upload VSA artifact
         if: ${{ inputs.emit_vsa }}

@@ -1,7 +1,7 @@
-# SLSA Level 3 release workflow
+# SLSA Level 3 Release and Verification workflows
 
-This reusable workflow builds and publishes signed, reproducible release artifacts with SLSA Level 3 attestations.
-It also gathers reproducibility evidence to ease adoption of future SLSA Level 4 guidance once that level is formally published.
+Theses reusable workflow build and publish signed, reproducible release artifacts with SLSA Level 3 attestations, and enable you to verify them, including VSAs.
+They also gather reproducibility evidence to ease adoption of currently being defined SLSA Level 4, once that level is formally published.
 A verification script is provided to validate the release artifacts, provenance, and reproducibility in `verify-release.sh`.
 
 - 🔒 **SLSA Level 3 Compliance** - Hermetic, reproducible builds with non-falsifiable provenance
@@ -68,11 +68,35 @@ chmod +x verify-release.sh
 # Run containerized reproducibility check (requires Docker)
 ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode reproduce
 
+# Generate and sign a Verification Summary Attestation locally
+./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode full \
+  --emit-vsa my-release.vsa.json --verifier-id https://example.com/verifier
+
 # Verify the published Verification Summary Attestation only
 ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode vsa
 ```
 
 Need a signed verification summary? Combine `--mode full` with `--emit-vsa <file> --verifier-id <uri>` (plus optional policy metadata) to generate a [Verification Summary Attestation](https://slsa.dev/spec/v1.1/verification_summary).
+
+> **Why generation lives in `verify-release.sh`:** VSA production happens *after* artifact publication so a verifier role, separate from the packager, can download the release assets, run all policy checks (full mode), and sign the result. Keeping verification outside `scripts/package-source.sh` preserves this independence.
+
+### Run in GitHub Actions
+
+Reuse the bundled verification workflow to automate checks in CI:
+
+```yaml
+jobs:
+  verify-release:
+    uses: bytemare/slsa/.github/workflows/verify.yaml@<pinned-commit>
+    with:
+      repo: your-org/your-repo
+      tag: v1.2.3
+      mode: full,reproduce   # run multiple modes sequentially
+      emit_vsa: true         # optional – uploads a signed verification summary (requires full)
+      verifier_id: https://example.com/trusted-verifier
+```
+
+For interactive runs, trigger `.github/workflows/wf-verify.yaml` via *Run workflow*; it forwards to the same reusable verifier with sensible defaults.
 
 ## SLSA Alignment
 
