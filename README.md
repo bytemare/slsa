@@ -16,6 +16,10 @@ The `verify-release.sh` helper drives the same verification policy locally or in
 
 If you're looking to verify a release built with this workflow, see the [Release Verification & Reproducibility Guide](#release-verification--reproducibility-guide).
 
+## Supported languages
+
+At the moment, the packaging flow supports Go modules only.
+
 ## Use the workflow
 
 **Configuration:**
