@@ -5,7 +5,7 @@ They also gather reproducibility evidence to ease adoption of the upcoming SLSA 
 The `verify-release.sh` helper drives the same verification policy locally or in automation.
 
 - 🔒 **SLSA Level 3 Compliance** - Hermetic, reproducible builds with non-falsifiable provenance
-- 🧭 **Level 4 Preparation** - Additional reproducibility materials to support an eventual Level 4 definition (no compliance claim yet)
+- 🧭 **Level 4 Preparation** - Additional reproducibility materials to support an eventual Level 4 definition (Level 4 is not fully defined, yet)
 - 📦 **SBOM** - CycloneDX Software Bill of Materials
 - ✍️ **Keyless Signing** - Cosign signatures with Rekor transparency logs
 - 🗂️ **Complete Metadata** - Commit metadata, environment snapshots, verification reports
@@ -102,7 +102,6 @@ For interactive runs, trigger `.github/workflows/wf-verify.yaml` via *Run workfl
 
 You can use the following snippet in your repo to inform your consumers of the release integrity properties:
 
-
 > ## Release Integrity (SLSA Level 3)
 > Releases are built with the reusable [bytemare/slsa](https://github.com/bytemare/slsa) workflow and ship the evidence required for SLSA Level 3 compliance:
 > 
@@ -131,9 +130,9 @@ You can use the following snippet in your repo to inform your consumers of the r
 
 > **Note:** The current SLSA specification (v1.1/v1.2) formally defines Levels 1–3. Level 4 remains a work in progress. This workflow implements the Level 3 controls and produces extra reproducibility evidence so to be prepared when Level 4 publication solidifies.
 
-The following table maps the [SLSA v1.2-rc1](https://slsa.dev/spec/v1.2-rc1/) requirements to how this workflow addresses each safeguard .
+The following table maps the current [SLSA v1.2-rc1](https://slsa.dev/spec/v1.2-rc1/) requirements to how this workflow addresses each safeguard .
 
-> ⚠️ **Disclaimer:** While this workflow implements the controls listed below, achieving SLSA compliance also depends on organizational policies and practices beyond the scope of this automation, like mandatory reviews from at least one other person. Users should ensure that their overall processes align with SLSA requirements.
+> ⚠️ **Disclaimer:** While this workflow implements the controls listed below, achieving SLSA compliance also depends on organizational policies and practices beyond the scope of this automation, like mandatory reviews from at least one other person. Users should ensure that their overall processes align with these SLSA requirements.
 
 | SLSA v1.2 Requirement | Sub-requirement                                        | Compliant | Evidence                                                                                                                                                                      |
 |-----------------------|--------------------------------------------------------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
