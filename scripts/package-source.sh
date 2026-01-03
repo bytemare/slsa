@@ -35,7 +35,7 @@
 #
 # Design decisions (trade-offs):
 #   - gzip -n -9: maximum compression and zeroed metadata (deterministic), slight CPU cost acceptable (single archive).
-#   - Dual determinism checks: internal self-check here plus external rebuild job in CI to collect evidence for prospective Level 4 criteria.
+#   - Dual determinism checks: internal self-check here plus external rebuild job in CI for SLSA L4 readiness evidence.
 #   - Per-file SHA-256 manifest retained (most useful for external verification) while other metadata (git tree, go env) gated by EXTENDED_METADATA for lean defaults.
 #   - Keeping script hash in both packaging-script.sha256 and build.env provides redundancy for integrity.
 #

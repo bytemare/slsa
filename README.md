@@ -69,7 +69,7 @@ chmod +x verify-release.sh
 # Run full verification (all artifacts)
 ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode full
 
-# Run containerized reproducibility check (requires Docker)
+# Run containerized reproducibility check (requires Docker and rebuilds inside golang:1.25-bookworm@sha256:42d8e9de...))
 ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode reproduce
 
 # Generate and sign a Verification Summary Attestation locally

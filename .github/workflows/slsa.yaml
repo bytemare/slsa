@@ -16,24 +16,30 @@ on:
   workflow_call:
     inputs:
       create_release:
+        description: >-
+          Create or update the GitHub Release
         type: boolean
         required: false
         default: true
       dry_run:
+        description: Run the workflow in dry-run mode
         type: boolean
         required: false
         default: false
       sign_blobs:
+        description: Sign release artifacts
         type: boolean
         required: false
         default: true
       extended_metadata:
-        description: 'Generate extended metadata (full per-file manifest + full commit metadata)'
+        description: >-
+          Generate extended metadata (full per-file manifest + full commit
+          metadata)
         type: boolean
         required: false
         default: false
 
-permissions: {}
+permissions: { }
 
 concurrency:
   group: release-${{ github.repository }}-${{ github.ref }}
@@ -51,14 +57,15 @@ jobs:
     runs-on: ubuntu-latest
     # Fully containerize to ensure hermetic, consistent environment.
     container:
-      image: golang:1.25-bookworm@sha256:42d8e9dea06f23d0bfc908826455213ee7f3ed48c43e287a422064220c501be9
+      image: >-
+        golang:1.25-bookworm@sha256:51b6b12427dc03451c24f7fc996c43a20e8a8e56f0849dd0db6ff6e9225cc892
     permissions:
       actions: read
       contents: read
     outputs:
       artifact_filename: ${{ steps.package.outputs.artifact_filename }}
       artifact_sha256: ${{ steps.package.outputs.artifact_sha256 }}
-      subjects_b64:  ${{ steps.package.outputs.subjects_b64 }}
+      subjects_b64: ${{ steps.package.outputs.subjects_b64 }}
       artifact_path: ${{ steps.package.outputs.artifact_path }}
     steps:
       - name: Harden Runner
@@ -86,7 +93,8 @@ jobs:
           extended_metadata: ${{ inputs.extended_metadata }}
         env:
           # Persist the builder digest so build.env captures it for downstream verification.
-          SLSA_BUILDER_IMAGE: golang:1.25-bookworm@sha256:42d8e9dea06f23d0bfc908826455213ee7f3ed48c43e287a422064220c501be9
+          SLSA_BUILDER_IMAGE: >-
+            golang:1.25-bookworm@sha256:42d8e9dea06f23d0bfc908826455213ee7f3ed48c43e287a422064220c501be9
 
       - name: Upload packaging bundle
         uses: actions/upload-artifact@2848b2cda0e5190984587ec6bb1f36730ca78d50
@@ -110,12 +118,13 @@ jobs:
     if: ${{ inputs.dry_run || github.ref_type == 'tag' }}
     runs-on: ubuntu-latest
     container:
-      image: golang:1.25-bookworm@sha256:42d8e9dea06f23d0bfc908826455213ee7f3ed48c43e287a422064220c501be9
+      image: >-
+        golang:1.25-bookworm@sha256:51b6b12427dc03451c24f7fc996c43a20e8a8e56f0849dd0db6ff6e9225cc892
     permissions:
       actions: read
+      attestations: write
       contents: write
       id-token: write
-      attestations: write
       security-events: write
     steps:
       - name: Harden Runner
@@ -156,19 +165,25 @@ jobs:
         id: paths
         run: |
           TAR="package/${{ needs.package_source.outputs.artifact_path }}"
-          echo "artifact_path=${TAR}" >> "$GITHUB_OUTPUT"
-          echo "subjects_path=package/subjects.sha256" >> "$GITHUB_OUTPUT"
-          echo "checksums_path=package/checksums.txt" >> "$GITHUB_OUTPUT"
-          echo "manifest_path=package/manifest.files.sha256" >> "$GITHUB_OUTPUT"
-          echo "metadata_path=package/verification.json" >> "$GITHUB_OUTPUT"
+          {
+            echo "artifact_path=${TAR}"
+            echo "subjects_path=package/subjects.sha256"
+            echo "checksums_path=package/checksums.txt"
+            echo "manifest_path=package/manifest.files.sha256"
+            echo "metadata_path=package/verification.json"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Install cosign
+      - name: Install cosign (pinned)
         if: ${{ !inputs.dry_run && inputs.sign_blobs }}
-        uses: sigstore/cosign-installer@dbac2a8edec72ca001e3e9f3e53cd0b98f1eb467
-
-      - name: Install slsa-verifier
-        if: ${{ !inputs.dry_run && inputs.sign_blobs }}
-        uses: slsa-framework/slsa-verifier/actions/installer@748161aaed42b2e508301d73c18ccb5be88a948e
+        env:
+          COSIGN_VERSION: v2.4.0
+          COSIGN_SHA256: >-
+            cd7636b3586a3bdac2d9c8f3b421ed119edcb20499107887fd929211110e8418
+        run: |
+          set -euo pipefail
+          curl -sSo cosign "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
+          echo "${COSIGN_SHA256}  cosign" | sha256sum -c -
+          install -m 0755 cosign /usr/local/bin/cosign
 
       - name: Generate CycloneDX SBOM (for Go modules)
         uses: CycloneDX/gh-gomod-generate-sbom@171199f37bbd0f611db19484319e87d2ee441f97
@@ -185,7 +200,7 @@ jobs:
 
       - name: Attest build provenance (GitHub native)
         if: ${{ !inputs.dry_run }}
-        uses: actions/attest-build-provenance@bed76f6f806fc6af1c3d142325ca64330160764d
+        uses: actions/attest-build-provenance@ba965ac88abfc6fa49344893ed19e5bf479a07d6
         with:
           subject-path: ${{ steps.paths.outputs.artifact_path }}
 
@@ -218,7 +233,7 @@ jobs:
 
       - name: Create/Update GitHub Release
         if: ${{ !inputs.dry_run && inputs.create_release }}
-        uses: softprops/action-gh-release@f38efdea4c5ffe13e9424b0aa2833bee28f1e34c
+        uses: softprops/action-gh-release@5434409c2b6457c050f109d68b2547fcbf1db07b
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
@@ -301,7 +316,8 @@ jobs:
     runs-on: ubuntu-latest
     container:
       # Mirror the hermetic builder so the rebuild check uses identical bits.
-      image: golang:1.25-bookworm@sha256:42d8e9dea06f23d0bfc908826455213ee7f3ed48c43e287a422064220c501be9
+      image: >-
+        golang:1.25-bookworm@sha256:51b6b12427dc03451c24f7fc996c43a20e8a8e56f0849dd0db6ff6e9225cc892
     permissions:
       contents: read
     steps:
@@ -328,7 +344,8 @@ jobs:
           extended_metadata: ${{ inputs.extended_metadata }}
         env:
           # The rebuild must mirror the original builder image to satisfy L4 reproducibility.
-          SLSA_BUILDER_IMAGE: golang:1.25-bookworm@sha256:42d8e9dea06f23d0bfc908826455213ee7f3ed48c43e287a422064220c501be9
+          SLSA_BUILDER_IMAGE: >-
+            golang:1.25-bookworm@sha256:42d8e9dea06f23d0bfc908826455213ee7f3ed48c43e287a422064220c501be9
 
       - name: Compare digests
         # Fails fast if non-deterministic differences emerge.
