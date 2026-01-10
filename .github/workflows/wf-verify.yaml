@@ -18,7 +18,6 @@ on:
       repo:
         description: 'Repository to verify (default: this repo)'
         required: false
-        default: ${{ github.repository }}
       tag:
         description: 'Release tag to verify'
         required: true

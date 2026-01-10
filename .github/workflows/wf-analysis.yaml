@@ -27,7 +27,7 @@ permissions: {}
 
 jobs:
   Lint:
-    uses: ./.github/workflows/lint.yaml
+    uses: bytemare/workflows/.github/workflows/lint.yaml@91e1deebc87bc9f65fd4ef726564b38501f0901c
     permissions:
       contents: read
       packages: read
@@ -37,11 +37,11 @@ jobs:
       super-linter: true
       super-linter-validate-all-codebase: true
       super-linter-enabled-linters: |
-        BASH,BASH_EXEC,VALIDATE_EDITORCONFIG,ENV,GITHUB_ACTIONS,MARKDOWN,YAML
+        BASH,BASH_EXEC,VALIDATE_EDITORCONFIG,ENV,GITHUB_ACTIONS,MARKDOWN,PYTHON,YAML
       super-linter-rules-path: .github
 
   Licenses:
-    uses: ./.github/workflows/license-check.yaml
+    uses: bytemare/workflows/.github/workflows/license-check.yaml@91e1deebc87bc9f65fd4ef726564b38501f0901c
     permissions:
       contents: write
       pull-requests: write
@@ -80,6 +80,7 @@ jobs:
       repository-projects: read
       statuses: read
       models: read # permissions:disable-line
+      artifact-metadata: read # permissions:disable-line
     with:
       # Dependency Review
       dependency-review: true
@@ -104,7 +105,7 @@ jobs:
       semgrep: true
       # CodeQL
       codeql: true
-      codeql-language: bash
+      codeql-language: python
       # SonarQube
       sonarqube: true
       sonarqube-configuration: .github/sonar-project.properties
