@@ -103,9 +103,6 @@ jobs:
     with:
       # Semgrep
       semgrep: true
-      # CodeQL
-      codeql: true
-      codeql-language: python
       # SonarQube
       sonarqube: true
       sonarqube-configuration: .github/sonar-project.properties
