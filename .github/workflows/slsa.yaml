@@ -38,6 +38,24 @@ on:
         type: boolean
         required: false
         default: false
+      packaging_language:
+        description: >-
+          Packaging language (go|generic|auto)
+        type: string
+        required: false
+        default: auto
+      sbom_language:
+        description: >-
+          SBOM generator selection (go|generic|auto)
+        type: string
+        required: false
+        default: auto
+      cdxgen_version:
+        description: >-
+          cdxgen version for generic SBOM generation (npm version/tag, leading v ok)
+        type: string
+        required: false
+        default: v12.0.0
 
 permissions: { }
 
@@ -91,6 +109,7 @@ jobs:
         uses: ./.github/actions/package
         with:
           extended_metadata: ${{ inputs.extended_metadata }}
+          packaging_language: ${{ inputs.packaging_language }}
         env:
           # Persist the builder digest so build.env captures it for downstream verification.
           SLSA_BUILDER_IMAGE: >-
@@ -135,8 +154,10 @@ jobs:
           allowed-endpoints: >
             api.github.com:443
             github.com:443
+            nodejs.org:443
             objects.githubusercontent.com:443
             pkg-containers.githubusercontent.com:443
+            registry.npmjs.org:443
             uploads.github.com:443
             release-assets.githubusercontent.com:443
             artifactcache.actions.githubusercontent.com:443
@@ -154,6 +175,28 @@ jobs:
         uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
         with:
           fetch-depth: 0
+
+      - id: sbom_lang
+        name: Select SBOM generator
+        run: |
+          set -euo pipefail
+          lang="${{ inputs.sbom_language }}"
+          lang="$(echo "$lang" | tr '[:upper:]' '[:lower:]' | tr -d ' ')"
+          if [[ -z "$lang" ]]; then
+            lang="auto"
+          fi
+          if [[ "$lang" == "auto" ]]; then
+            if [[ -f go.mod ]]; then
+              lang="go"
+            else
+              lang="generic"
+            fi
+          fi
+          case "$lang" in
+            go|generic) ;;
+            *) echo "Unsupported sbom_language: $lang (expected go|generic|auto)" >&2; exit 1 ;;
+          esac
+          echo "lang=$lang" >> "$GITHUB_OUTPUT"
 
       - name: Download packaging bundle
         uses: actions/download-artifact@4a24838f3d5601fd639834081e118c2995d51e1c
@@ -185,7 +228,24 @@ jobs:
           echo "${COSIGN_SHA256}  cosign" | sha256sum -c -
           install -m 0755 cosign /usr/local/bin/cosign
 
-      - name: Generate CycloneDX SBOM (for Go modules)
+      - name: Setup Node (for cdxgen)
+        if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
+        uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f
+        with:
+          node-version: '25.x'
+
+      - name: Generate CycloneDX SBOM (generic)
+        if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
+        env:
+          CDXGEN_VERSION: ${{ inputs.cdxgen_version }}
+        run: |
+          set -euo pipefail
+          version="${CDXGEN_VERSION:-latest}"
+          version="${version#v}"
+          npx --yes "@cyclonedx/cdxgen@${version}" -o sbom.cdx.json .
+
+      - name: Generate CycloneDX SBOM (Go modules)
+        if: ${{ steps.sbom_lang.outputs.lang == 'go' }}
         uses: CycloneDX/gh-gomod-generate-sbom@171199f37bbd0f611db19484319e87d2ee441f97
         with:
           version: 1
@@ -342,6 +402,7 @@ jobs:
         uses: ./.github/actions/package
         with:
           extended_metadata: ${{ inputs.extended_metadata }}
+          packaging_language: ${{ inputs.packaging_language }}
         env:
           # The rebuild must mirror the original builder image to satisfy L4 reproducibility.
           SLSA_BUILDER_IMAGE: >-

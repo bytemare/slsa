@@ -9,7 +9,8 @@
 # https://spdx.org/licenses/MIT.html
 #
 
-# This is the prod ready script for deterministic source packaging for Go modules.
+# This is the prod ready script for deterministic source packaging.
+# Language support can be auto-detected or forced via PACKAGING_LANGUAGE (go|generic|auto).
 
 # Deterministic source packaging script.
 # Required env (set automatically by GitHub Actions, or manually for local reproduction):
@@ -18,6 +19,9 @@
 #   GITHUB_REF_NAME    Tag or branch name used in naming.
 #   GITHUB_REF_TYPE    "tag" for tag builds or anything else treated as non-tag.
 #   GITHUB_RUN_NUMBER  Used only to disambiguate dry-run (non-tag) builds.
+#
+# Optional env:
+#   PACKAGING_LANGUAGE  go|generic|auto (defaults to auto; auto checks for go.mod in commit)
 #
 # Outputs (written to $GITHUB_OUTPUT for workflow consumption):
 #   artifact_path       Full path to produced .tar.gz
@@ -36,7 +40,7 @@
 # Design decisions (trade-offs):
 #   - gzip -n -9: maximum compression and zeroed metadata (deterministic), slight CPU cost acceptable (single archive).
 #   - Dual determinism checks: internal self-check here plus external rebuild job in CI for SLSA L4 readiness evidence.
-#   - Per-file SHA-256 manifest retained (most useful for external verification) while other metadata (git tree, go env) gated by EXTENDED_METADATA for lean defaults.
+#   - Per-file SHA-256 manifest retained (most useful for external verification) while other metadata (git tree, optional Go env) gated by EXTENDED_METADATA for lean defaults.
 #   - Keeping script hash in both packaging-script.sha256 and build.env provides redundancy for integrity.
 #
 # Security posture:
@@ -59,6 +63,24 @@ need() { [ -n "${!1:-}" ] || fail "Missing env var: $1"; }
 echo '::group::Validate environment & prepare'
 # Validate required environment variables are present.
 for v in GITHUB_SHA GITHUB_REPOSITORY GITHUB_REF_NAME GITHUB_RUN_NUMBER; do need "$v"; done
+# Resolve packaging language (go|generic|auto).
+PACKAGING_LANGUAGE="${PACKAGING_LANGUAGE:-auto}"
+PACKAGING_LANGUAGE="$(echo "$PACKAGING_LANGUAGE" | tr '[:upper:]' '[:lower:]')"
+if [[ "$PACKAGING_LANGUAGE" == "auto" ]]; then
+  if git cat-file -e "${GITHUB_SHA}:go.mod" 2>/dev/null; then
+    PACKAGING_LANGUAGE="go"
+  else
+    PACKAGING_LANGUAGE="generic"
+  fi
+fi
+case "$PACKAGING_LANGUAGE" in
+  go|generic) : ;;
+  *) fail "Invalid PACKAGING_LANGUAGE: $PACKAGING_LANGUAGE (expected go|generic|auto)" ;;
+esac
+if [[ "$PACKAGING_LANGUAGE" == "go" ]]; then
+  git cat-file -e "${GITHUB_SHA}:go.mod" 2>/dev/null || \
+    fail "PACKAGING_LANGUAGE=go but go.mod not found in ${GITHUB_SHA}"
+fi
 # Ensure the referenced commit exists in this repository.
 git rev-parse --verify -q "${GITHUB_SHA}^{commit}" >/dev/null || fail "Invalid commit ${GITHUB_SHA}"
 # Enforce a clean working tree and index so the archive purely reflects the commit.
@@ -90,8 +112,10 @@ log "Creating deterministic archive: $ARCHIVE_PATH"
 git archive --format=tar --prefix="${BASENAME}/" "$GITHUB_SHA" | gzip -n -9 > "$ARCHIVE_PATH"
 [ -s "$ARCHIVE_PATH" ] || fail "Archive empty"
 # Structural guard (list just the target path to avoid broken-pipe edge cases).
-if ! tar -tzf "$ARCHIVE_PATH" "${BASENAME}/go.mod" >/dev/null 2>&1; then
-  fail "go.mod not found in archive"
+if [[ "$PACKAGING_LANGUAGE" == "go" ]]; then
+  if ! tar -tzf "$ARCHIVE_PATH" "${BASENAME}/go.mod" >/dev/null 2>&1; then
+    fail "go.mod not found in archive"
+  fi
 fi
 # Primary digest plus subjects (initially only archive, more subjects may be appended later).
 artifact_sha256="$(sha256_of "$ARCHIVE_PATH")"
@@ -129,11 +153,13 @@ echo '::endgroup::'
 
 echo '::group::Extended metadata (conditional)'
 if [ "${EXTENDED_METADATA:-false}" = "true" ]; then
-  log "EXTENDED_METADATA enabled: git tree plus Go env"
+  log "EXTENDED_METADATA enabled: git tree plus optional Go env"
   git ls-tree -r --full-tree --long "$GITHUB_SHA" > manifest.git-tree
   printf '%s  %s\n' "$(sha256_of manifest.git-tree)" manifest.git-tree > manifest.git-tree.sha256
-  if command -v jq >/dev/null 2>&1; then go env -json | jq -S . > go.env.json; else go env -json > go.env.json; fi
-  printf '%s  %s\n' "$(sha256_of go.env.json)" go.env.json > go.env.json.sha256
+  if [[ "$PACKAGING_LANGUAGE" == "go" ]]; then
+    if command -v jq >/dev/null 2>&1; then go env -json | jq -S . > go.env.json; else go env -json > go.env.json; fi
+    printf '%s  %s\n' "$(sha256_of go.env.json)" go.env.json > go.env.json.sha256
+  fi
 else
   log "EXTENDED_METADATA disabled: skipping git tree and Go env snapshot"
 fi
@@ -157,6 +183,7 @@ if [ -f /etc/os-release ]; then source /etc/os-release; fi
   printf 'BUILD_PACKAGES=%s\n' "git,ca-certificates,gzip,wget,coreutils,perl-base"
   printf 'SOURCE_DATE_EPOCH=%s\n' "${SOURCE_DATE_EPOCH}"
   printf 'PACKAGING_SCRIPT_SHA256=%s\n' "$SCRIPT_DIGEST"
+  printf 'PACKAGING_LANGUAGE=%s\n' "$PACKAGING_LANGUAGE"
   # Surface the container digest so external verifiers can reuse the exact builder.
   printf 'SLSA_BUILDER_IMAGE=%s\n' "${SLSA_BUILDER_IMAGE:-unknown}"
 } > build.env

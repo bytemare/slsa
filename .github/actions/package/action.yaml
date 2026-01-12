@@ -5,9 +5,13 @@ description: >-
 
 inputs:
   extended_metadata:
-    description: 'Generate extended metadata (git tree + Go env)'
+    description: 'Generate extended metadata (git tree + optional Go env)'
     required: false
     default: 'false'
+  packaging_language:
+    description: 'Packaging language (go|generic|auto)'
+    required: false
+    default: 'auto'
 
 outputs:
   artifact_path:
@@ -34,6 +38,7 @@ runs:
       shell: bash
       env:
         EXTENDED_METADATA: ${{ inputs.extended_metadata }}
+        PACKAGING_LANGUAGE: ${{ inputs.packaging_language }}
         SLSA_BUILDER_IMAGE: ${{ env.SLSA_BUILDER_IMAGE }}
         GITHUB_SHA: ${{ github.sha }}
         GITHUB_REPOSITORY: ${{ github.repository }}

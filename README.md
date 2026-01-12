@@ -3,6 +3,7 @@
 These reusable workflows build and publish signed, reproducible release artifacts with SLSA Level 3 attestations, and provide a companion verifier (including VSA checks) that consumers can drop into their own CI.
 They also gather reproducibility evidence to ease adoption of the upcoming SLSA Level 4 guidance once that level is formally published.
 The `verify-release.sh` helper drives the same verification policy locally or in automation.
+Packaging is source-only and language-agnostic, and Go modules get extra Go-specific metadata when detected.
 
 - 🔒 **SLSA Level 3 Compliance** - Hermetic, reproducible builds with non-falsifiable provenance
 - 🧭 **Level 4 Preparation** - Additional reproducibility materials to support an eventual Level 4 definition (Level 4 is not fully defined, yet)
@@ -18,7 +19,7 @@ If you're looking to verify a release built with this workflow, see the [Release
 
 ## Supported languages
 
-At the moment, the packaging flow supports Go modules only.
+Source packaging works for any repo, but Go modules receive extra metadata (like `go env`) and can use the Go-specific SBOM generator. Non-Go repos use the generic SBOM path.
 
 ## Use the workflow
 
@@ -45,6 +46,9 @@ jobs:
       create_release: ${{ github.event_name != 'pull_request' }}
       sign_blobs: true
       extended_metadata: false  # Set to true for forensics mode
+      packaging_language: auto  # go|generic|auto
+      sbom_language: auto       # go|generic|auto
+      cdxgen_version: v12.0.0   # generic SBOM only (pin for determinism)
     permissions:
       contents: write           # Create releases
       id-token: write          # OIDC for signing
@@ -52,6 +56,8 @@ jobs:
       actions: read            # Read workflow data
       security-events: write   # Upload SARIF (optional)
 ```
+
+`packaging_language=auto` detects `go.mod` in the tagged commit and enables Go-specific metadata only when present. `sbom_language=auto` uses the Go SBOM generator when `go.mod` exists, otherwise it runs cdxgen (pin `cdxgen_version` for deterministic output).
 
 Use the latest available commit hash from main.
 
@@ -210,10 +216,10 @@ The verification script helps you with automated checks (see [Quick Verification
 
 ### Artifacts depending on build modes
 
-| Mode               | Enable Via                | Artifacts           | Use Case                                      |
-|--------------------|---------------------------|---------------------|-----------------------------------------------|
-| **Lean** (default) | Default setting           | Core artifacts only | Fast builds, sufficient for most verification |
-| **Extended**       | `extended_metadata: true` | + git tree + Go env | Deep forensics, regulatory compliance         |
+| Mode               | Enable Via                | Artifacts                                               | Use Case                                      |
+|--------------------|---------------------------|---------------------------------------------------------|-----------------------------------------------|
+| **Lean** (default) | Default setting           | Core artifacts only                                     | Fast builds, sufficient for most verification |
+| **Extended**       | `extended_metadata: true` | + git tree + language-specific env (Go when applicable) | Deep forensics, regulatory compliance         |
 
 #### Core Artifacts (Always Present)
 
@@ -224,7 +230,7 @@ The verification script helps you with automated checks (see [Quick Verification
 | `checksums.txt`                                       | Aggregated SHA-256 checksums (convenience verification)                  | L3 (secondary subject); structured manifest for higher-level use  |
 | `<repo>-<tag>.tar.gz.{sig,cert,bundle}`               | Cosign signatures for tarball                                            | L3 (authenticity via Sigstore transparency)                       |
 | `checksums.txt.{sig,cert,bundle}`                     | Cosign signatures for checksums manifest                                 | L3 (signed integrity manifest)                                    |
-| `sbom.cdx.json`                                       | CycloneDX SBOM (dependencies + licenses)                                 | L3 (attested via GitHub attestations)                             |
+| `sbom.cdx.json`                                       | CycloneDX SBOM (Go modules via gh-gomod; generic via cdxgen)             | L3 (attested via GitHub attestations)                             |
 | `sbom.cdx.json.{sig,cert,bundle}`                     | Cosign signatures for SBOM                                               | L3 (signed dependency manifest)                                   |
 | `*.intoto.jsonl`                                      | SLSA Level 3 provenance attestation                                      | L3 (required non-falsifiable provenance)                          |
 | `manifest.files.sha256`                               | Per-file SHA-256 (content-addressed mapping)                             | Supplemental reproducibility aid (future Level 4 readiness)       |
@@ -241,7 +247,7 @@ Enable with `extended_metadata: true` in workflow or `EXTENDED_METADATA=true` lo
 | File                | Purpose                                     |
 |---------------------|---------------------------------------------|
 | `manifest.git-tree` | Git object tree structure (modes, blob IDs) |
-| `go.env.json`       | Go toolchain environment (sorted JSON)      |
+| `go.env.json`       | Go toolchain environment (only for Go mode) |
 
 **Note:** Separate `.sha256` sidecar files removed for simplicity. Integrity verified via `checksums.txt` and `subjects.sha256`.
 
