@@ -114,27 +114,27 @@ You can use the following snippet in your repo to inform your consumers of the r
 
 > ## Release Integrity (SLSA Level 3)
 > Releases are built with the reusable [bytemare/slsa](https://github.com/bytemare/slsa) workflow and ship the evidence required for SLSA Level 3 compliance:
-> 
+>
 > - 📦 Artifacts are uploaded to the release page, and include the deterministic source archive plus subjects.sha256, signed SBOM (sbom.cdx.json), GitHub provenance (*.intoto.jsonl), a reproducibility report (verification.json), and a signed Verification Summary Attestation (verification-summary.attestation.json[.bundle]).
 > - ✍️ All artifacts are signed using [Sigstore](https://sigstore.dev) with transparency via [Rekor](https://rekor.sigstore.dev).
-> - ✅ Verification (or look at the latest document of [bytemare/slsa](https://github.com/bytemare/slsa) :
->  ```shell
->   curl -sSL https://raw.githubusercontent.com/bytemare/slsa/main/verify-release.sh -o verify-release.sh
->   chmod +x verify-release.sh
->   ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode full
->  ```
->   Add `--mode reproduce` to rerun the build in a container, or `--mode vsa` to validate just the verification summary.
-> - 🔁 Automated verification with the reusable verifier from [bytemare/slsa](https://github.com/bytemare/slsa) into your CI
->  ```yaml
->   jobs:
->       verify-release:
->           uses: bytemare/slsa/.github/workflows/verify.yaml@<pinned-commit>
->           with:
->               repo: <owner>/<repo>
->               tag: <tag>
->               mode: full,reproduce
->               emit_vsa: true
->  ```
+> - ✅ Verification (or see the latest docs at [bytemare/slsa](https://github.com/bytemare/slsa)):
+> ```shell
+> curl -sSL https://raw.githubusercontent.com/bytemare/slsa/main/verify-release.sh -o verify-release.sh
+> chmod +x verify-release.sh
+> ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode full
+> ```
+> Add `--mode reproduce` to rerun the build in a container, or `--mode vsa` to validate just the verification summary.
+> - 🔁 Automated verification with the reusable verifier from [bytemare/slsa](https://github.com/bytemare/slsa) in CI:
+> ```yaml
+> jobs:
+> verify-release:
+> uses: bytemare/slsa/.github/workflows/verify.yaml@<pinned-commit>
+> with:
+> repo: <owner>/<repo>
+> tag: <tag>
+> mode: full,reproduce
+> emit_vsa: true
+> ```
 
 ## SLSA Alignment
 
@@ -173,17 +173,17 @@ The following table maps the current [SLSA v1.2-rc1](https://slsa.dev/spec/v1.2-
 ## Release Verification & Reproducibility Guide
 
 > **Quick Start:** Jump to [Quick Verification](#quick-verification) for basic checks.  
-> **Auditors/Packagers:** See [Complete Verification](#complete-verification-level-3--supplemental-evidence) and [Reproducing Builds Locally](#reproducing-builds-locally-supplemental-evidence).
+> **Auditors/Packagers:** See [Complete Verification](#complete-verification-level-3--supplemental-evidence) and [Reproducing Builds Locally](#reproducing-builds-locally-preparing-slsa-level-4).
 
 - [Provided resources](#provided-resources)
-    - [Build Modes](#artifacts-depending-on-build-modes)
-        - [Core Artifacts](#core-artifacts-always-present)
-        - [Extended Artifacts](#extended-artifacts-optional)
+  - [Build Modes](#artifacts-depending-on-build-modes)
+    - [Core Artifacts](#core-artifacts-always-present)
+    - [Extended Artifacts](#extended-artifacts-optional)
 - [Quick Verification](#quick-verification)
-    - [Automated Verification (Recommended)](#automated-verification-recommended)
-    - [Manual Verification](#manual-verification)
+  - [Automated Verification (Recommended)](#automated-verification-recommended)
+  - [Manual Verification](#manual-verification)
 - [Complete Verification (Level 3 + supplemental evidence)](#complete-verification-level-3--supplemental-evidence)
-- [Reproducing Builds Locally (supplemental evidence)](#reproducing-builds-locally-supplemental-evidence)
+- [Reproducing Builds Locally (preparing SLSA Level 4)](#reproducing-builds-locally-preparing-slsa-level-4)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -278,8 +278,14 @@ chmod +x verify-release.sh
 
 **Verification Modes:**
 - **quick** (default) - Basic checksum and signature verification (fast, recommended for most users).
-- **full** - Complete verification of all release artifacts including SBOM and provenance. This mode uses the official `slsa-verifier` to verify the provenance and additionally provides a holistic verification of the entire release, ensuring that all the pieces of the puzzle (artifacts, signatures, attestations, provenance, and SBOM) fit together correctly, providing a much higher level of confidence in the integrity and authenticity of the release.
-- **reproduce** - Hermetic rebuild using the `SLSA_BUILDER_IMAGE` recorded in `build.env` (defaults to `golang:1.25-bookworm@sha256:42d8e9dea06f23d0bfc908826455213ee7f3ed48c43e287a422064220c501be9`), yielding independent evidence for future Level 4 expectations.
+- **full** - Complete verification of all release artifacts including SBOM and provenance. This mode uses the
+  official `slsa-verifier` to verify the provenance and additionally provides a holistic verification of the
+  entire release, ensuring that all the pieces of the puzzle (artifacts, signatures, attestations, provenance,
+  and SBOM) fit together correctly, providing a much higher level of confidence in the integrity and
+  authenticity of the release.
+- **reproduce** - Hermetic rebuild using the `SLSA_BUILDER_IMAGE` recorded in `build.env` (defaults to
+  `golang:1.25-bookworm@sha256:42d8e9dea06f23d0bfc908826455213ee7f3ed48c43e287a422064220c501be9`), yielding
+  independent evidence for future Level 4 expectations.
 
 The script automatically:
 - Checks for required tools (gh, jq, cosign, openssl, sha256sum/shasum, git for full mode)
@@ -599,8 +605,7 @@ git archive --format=tar --prefix="${BASENAME}/" "$GITHUB_SHA" | gzip -n -9 > "$
 
 # Generate subject digest
 sha256=$( (command -v sha256sum && sha256sum "$ARCHIVE_PATH" || shasum -a 256 "$ARCHIVE_PATH") | awk \'{print $1}\')
-printf 
-'%s  %s\n' "$sha256" "$(basename "$ARCHIVE_PATH")" > subjects.sha256
+printf '%s  %s\n' "$sha256" "$(basename "$ARCHIVE_PATH")" > subjects.sha256
 
 # Script later appends checksums.txt digest and base64-encodes for SLSA (ephemeral)
 ```

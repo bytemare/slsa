@@ -6,5 +6,7 @@ Only the latest version will be benefit from security fixes. Maintainers of proj
 
 ## Reporting a Vulnerability
 
-Vulnerabilities can be reported through GitHub issues, here: https://github.com/bytemare/slsa/issues
-If the issue is sensitive enough that the reporter thinks the discussion needs more confidentiality, we can discuss options there (e.g. On a Security Advisory or per e-mail).
+Vulnerabilities can be reported through GitHub issues here:
+[https://github.com/bytemare/slsa/issues](https://github.com/bytemare/slsa/issues).
+If the issue is sensitive enough that the reporter thinks the discussion needs more confidentiality, we can
+discuss options there (e.g. on a Security Advisory or per e-mail).

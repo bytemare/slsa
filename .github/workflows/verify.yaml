@@ -112,9 +112,11 @@ jobs:
             need_verifier=true
           fi
 
-          echo "modes=$(IFS=,; echo "${modes[*]}")" >> "$GITHUB_OUTPUT"
-          echo "need_verifier=$need_verifier" >> "$GITHUB_OUTPUT"
-          echo "need_docker=$need_docker" >> "$GITHUB_OUTPUT"
+          {
+            echo "modes=$(IFS=,; echo "${modes[*]}")"
+            echo "need_verifier=$need_verifier"
+            echo "need_docker=$need_docker"
+          } >> "$GITHUB_OUTPUT"
 
           if [[ "$need_verifier" == "true" ]]; then
             COSIGN_VERSION=v2.4.0

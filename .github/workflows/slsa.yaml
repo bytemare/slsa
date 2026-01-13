@@ -327,8 +327,8 @@ jobs:
             --mode full \
             --emit-vsa verification-summary.attestation.json \
             --verifier-id "${WORKFLOW_VERIFIER_ID}" \
-            --verifier-version workflow_sha=${GITHUB_SHA} \
-            --verifier-version script_sha=${VERIFY_SCRIPT_SHA} \
+            --verifier-version "workflow_sha=${GITHUB_SHA}" \
+            --verifier-version "script_sha=${VERIFY_SCRIPT_SHA}" \
             --policy-uri "${POLICY_URI}" \
             --policy-file verify-release.sh \
             --resource-uri "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
