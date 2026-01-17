@@ -75,12 +75,11 @@ jobs:
         id: setup
         shell: bash
         env:
-          MODES_INPUT: ${{ inputs.mode }}
+          GHA_MODES_INPUT: ${{ inputs.mode }}
         run: |
-          # shellcheck disable=SC2153
           set -euo pipefail
 
-          modes_input="${MODES_INPUT}"
+          modes_input="${GHA_MODES_INPUT}"
           if [[ -z "$modes_input" ]]; then
             modes_input="full"
           fi
@@ -140,21 +139,20 @@ jobs:
       - name: Run verification modes
         env:
           COSIGN_EXPERIMENTAL: 1
-          MODES: ${{ steps.setup.outputs.modes }}
-          EMIT_VSA: ${{ inputs.emit_vsa }}
-          VERIFIER_ID: ${{ inputs.verifier_id }}
-          POLICY_URI: ${{ inputs.policy_uri }}
-          INPUT_REPO: ${{ inputs.repo }}
-          INPUT_TAG: ${{ inputs.tag }}
+          GHA_MODES: ${{ steps.setup.outputs.modes }}
+          GHA_EMIT_VSA: ${{ inputs.emit_vsa }}
+          GHA_VERIFIER_ID: ${{ inputs.verifier_id }}
+          GHA_POLICY_URI: ${{ inputs.policy_uri }}
+          GHA_INPUT_REPO: ${{ inputs.repo }}
+          GHA_INPUT_TAG: ${{ inputs.tag }}
         shell: bash
         run: |
-          # shellcheck disable=SC2153
           set -euo pipefail
 
-          IFS=',' read -ra modes <<< "${MODES}"
-          emit_vsa="${EMIT_VSA}"
-          verifier_id="${VERIFIER_ID}"
-          policy_uri="${POLICY_URI}"
+          IFS=',' read -ra modes <<< "${GHA_MODES}"
+          emit_vsa="${GHA_EMIT_VSA}"
+          verifier_id="${GHA_VERIFIER_ID}"
+          policy_uri="${GHA_POLICY_URI}"
 
           declare -a emit_args=()
           if [[ "$emit_vsa" == "true" ]]; then
@@ -189,8 +187,8 @@ jobs:
 
             echo "Running verify-release.sh in $mode mode"
             ./verify-release.sh \
-              --repo "${INPUT_REPO}" \
-              --tag "${INPUT_TAG}" \
+              --repo "${GHA_INPUT_REPO}" \
+              --tag "${GHA_INPUT_TAG}" \
               --mode "$mode" \
               "${extra_args[@]}"
           done
