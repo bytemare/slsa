@@ -74,10 +74,12 @@ jobs:
       - name: Prepare tooling
         id: setup
         shell: bash
+        env:
+          MODES_INPUT: ${{ inputs.mode }}
         run: |
           set -euo pipefail
 
-          modes_input="${{ inputs.mode }}"
+          modes_input="${MODES_INPUT}"
           if [[ -z "$modes_input" ]]; then
             modes_input="full"
           fi
@@ -137,14 +139,20 @@ jobs:
       - name: Run verification modes
         env:
           COSIGN_EXPERIMENTAL: 1
+          MODES: ${{ steps.setup.outputs.modes }}
+          EMIT_VSA: ${{ inputs.emit_vsa }}
+          VERIFIER_ID: ${{ inputs.verifier_id }}
+          POLICY_URI: ${{ inputs.policy_uri }}
+          INPUT_REPO: ${{ inputs.repo }}
+          INPUT_TAG: ${{ inputs.tag }}
         shell: bash
         run: |
           set -euo pipefail
 
-          IFS=',' read -ra modes <<< "${{ steps.setup.outputs.modes }}"
-          emit_vsa="${{ inputs.emit_vsa }}"
-          verifier_id="${{ inputs.verifier_id }}"
-          policy_uri="${{ inputs.policy_uri }}"
+          IFS=',' read -ra modes <<< "${MODES}"
+          emit_vsa="${EMIT_VSA}"
+          verifier_id="${VERIFIER_ID}"
+          policy_uri="${POLICY_URI}"
 
           declare -a emit_args=()
           if [[ "$emit_vsa" == "true" ]]; then
@@ -179,8 +187,8 @@ jobs:
 
             echo "Running verify-release.sh in $mode mode"
             ./verify-release.sh \
-              --repo "${{ inputs.repo }}" \
-              --tag "${{ inputs.tag }}" \
+              --repo "${INPUT_REPO}" \
+              --tag "${INPUT_TAG}" \
               --mode "$mode" \
               "${extra_args[@]}"
           done

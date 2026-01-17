@@ -178,9 +178,11 @@ jobs:
 
       - id: sbom_lang
         name: Select SBOM generator
+        env:
+          SBOM_LANGUAGE: ${{ inputs.sbom_language }}
         run: |
           set -euo pipefail
-          lang="${{ inputs.sbom_language }}"
+          lang="${SBOM_LANGUAGE}"
           lang="$(echo "$lang" | tr '[:upper:]' '[:lower:]' | tr -d ' ')"
           if [[ -z "$lang" ]]; then
             lang="auto"
@@ -206,8 +208,10 @@ jobs:
 
       - name: Prepare artifact paths
         id: paths
+        env:
+          ARTIFACT_PATH: ${{ needs.package_source.outputs.artifact_path }}
         run: |
-          TAR="package/${{ needs.package_source.outputs.artifact_path }}"
+          TAR="package/${ARTIFACT_PATH}"
           {
             echo "artifact_path=${TAR}"
             echo "subjects_path=package/subjects.sha256"
@@ -269,9 +273,9 @@ jobs:
         name: Cosign sign source artifact
         env:
           COSIGN_EXPERIMENTAL: 1
+          ART_PATH: ${{ steps.paths.outputs.artifact_path }}
         run: |
           set -euo pipefail
-          ART_PATH='${{ steps.paths.outputs.artifact_path }}'
           cosign sign-blob --yes --bundle "${ART_PATH}.bundle" "${ART_PATH}"
           echo "bundle_file=${ART_PATH}.bundle" >> "$GITHUB_OUTPUT"
 
@@ -410,10 +414,13 @@ jobs:
 
       - name: Compare digests
         # Fails fast if non-deterministic differences emerge.
+        env:
+          ORIG_SHA256: ${{ needs.package_source.outputs.artifact_sha256 }}
+          NEW_SHA256: ${{ steps.repackage.outputs.artifact_sha256 }}
         run: |
           set -euo pipefail
-          orig='${{ needs.package_source.outputs.artifact_sha256 }}'
-          new='${{ steps.repackage.outputs.artifact_sha256 }}'
+          orig="${ORIG_SHA256}"
+          new="${NEW_SHA256}"
           echo "Original digest: $orig"
           echo "Rebuilt  digest: $new"
           if [ "$orig" != "$new" ]; then
