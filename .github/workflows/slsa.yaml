@@ -220,7 +220,7 @@ jobs:
             echo "metadata_path=package/verification.json"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Install cosign (pinned)
+      - name: Install cosign
         if: ${{ !inputs.dry_run && inputs.sign_blobs }}
         env:
           COSIGN_VERSION: v2.4.0
@@ -315,6 +315,29 @@ jobs:
             package/build.env
             scripts/package-source.sh
             package/verification.json
+
+      - name: Install verification tools
+        if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
+        env:
+          GH_VERSION: v2.56.0
+          GH_SHA256: >-
+            82174795823a712c01bb4c81ae00b2bde122b1e956ccb01baec542a3a862f37a
+          JQ_VERSION: jq-1.7.1
+          JQ_SHA256: >-
+            5942c9b0934e510ee61eb3e30273f1b3fe2590df93933a93d7c58b81d19c8ff5
+        run: |
+          set -euo pipefail
+          curl -sSfL --proto '=https' --proto-redir '=https' --max-redirs 1 \
+            -o gh.tgz "https://github.com/cli/cli/releases/download/${GH_VERSION}/gh_${GH_VERSION#v}_linux_amd64.tar.gz"
+          echo "${GH_SHA256}  gh.tgz" | sha256sum -c -
+          tar -xzf gh.tgz
+          install -m 0755 "gh_${GH_VERSION#v}_linux_amd64/bin/gh" /usr/local/bin/gh
+          curl -sSfL --proto '=https' --proto-redir '=https' --max-redirs 1 \
+            -o jq "https://github.com/jqlang/jq/releases/download/${JQ_VERSION}/jq-linux-amd64"
+          echo "${JQ_SHA256}  jq" | sha256sum -c -
+          install -m 0755 jq /usr/local/bin/jq
+          go install github.com/slsa-framework/slsa-verifier/v2/cmd/slsa-verifier@v2.7.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Verify release & emit VSA
         if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
