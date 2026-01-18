@@ -228,7 +228,8 @@ jobs:
             cd7636b3586a3bdac2d9c8f3b421ed119edcb20499107887fd929211110e8418
         run: |
           set -euo pipefail
-          curl -sSo cosign "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
+          curl -sSfL --proto '=https' --proto-redir '=https' --max-redirs 1 \
+            -o cosign "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
           echo "${COSIGN_SHA256}  cosign" | sha256sum -c -
           install -m 0755 cosign /usr/local/bin/cosign
 

@@ -106,7 +106,7 @@ jobs:
       verifier_id: https://example.com/trusted-verifier
 ```
 
-For interactive runs, trigger `.github/workflows/wf-verify.yaml` via *Run workflow*; it forwards to the same reusable verifier with sensible defaults.
+For interactive runs, trigger `.github/workflows/wf-verify.yaml`. It uses same reusable verifier with sensible defaults.
 
 ## Inform your users
 
@@ -230,7 +230,7 @@ The verification script helps you with automated checks (see [Quick Verification
 | `checksums.txt`                                       | Aggregated SHA-256 checksums (convenience verification)                  | L3 (secondary subject); structured manifest for higher-level use  |
 | `<repo>-<tag>.tar.gz.{sig,cert,bundle}`               | Cosign signatures for tarball                                            | L3 (authenticity via Sigstore transparency)                       |
 | `checksums.txt.{sig,cert,bundle}`                     | Cosign signatures for checksums manifest                                 | L3 (signed integrity manifest)                                    |
-| `sbom.cdx.json`                                       | CycloneDX SBOM (Go modules via gh-gomod; generic via cdxgen)             | L3 (attested via GitHub attestations)                             |
+| `sbom.cdx.json`                                       | CycloneDX SBOM (via cdxgen, gh-gomod for Go modules)                     | L3 (attested via GitHub attestations)                             |
 | `sbom.cdx.json.{sig,cert,bundle}`                     | Cosign signatures for SBOM                                               | L3 (signed dependency manifest)                                   |
 | `*.intoto.jsonl`                                      | SLSA Level 3 provenance attestation                                      | L3 (required non-falsifiable provenance)                          |
 | `manifest.files.sha256`                               | Per-file SHA-256 (content-addressed mapping)                             | Supplemental reproducibility aid (future Level 4 readiness)       |
@@ -263,17 +263,17 @@ The easiest way to verify a release is using the automated verification script:
 
 ```bash
 # Download the script
-curl -sSL https://raw.githubusercontent.com/bytemare/workflows/main/verify-release.sh -o verify-release.sh
+curl -sSL https://raw.githubusercontent.com/bytemare/slsa/main/verify-release.sh -o verify-release.sh
 chmod +x verify-release.sh
 
 # Run quick verification (checksums + signatures)
-./verify-release.sh --repo bytemare/workflows --tag 0.0.4
+./verify-release.sh --repo <owner>/<repo> --tag <tag>
 
 # Run full verification (all artifacts)
-./verify-release.sh --repo bytemare/workflows --tag 0.0.4 --mode full
+./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode full
 
 # Run containerized reproducibility check (uses golang:1.25-bookworm@sha256:42d8e9de...)
-./verify-release.sh --repo bytemare/workflows --tag 0.0.4 --mode reproduce
+./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode reproduce
 ```
 
 **Verification Modes:**
@@ -437,12 +437,8 @@ When using Sigstore bundles (`.bundle`), the certificate is securely packaged al
 Download the tarball if not already present, then verify:
 ```bash
 ART=$(find . -maxdepth 1 -name "*.tar.gz" -type f -print -quit)
-OWNER="bytemare"  # Replace with actual repository owner
-REPO="workflows"  # Replace with actual repository name
-
-gh attestation verify \
-  --repo ${OWNER}/${REPO} \
-  "${ART}"
+# Replace with actual repository owner and name
+gh attestation verify --repo <owner>/<repo> "${ART}"
 ```
 
 **Note:** This verifies both SLSA provenance and SBOM attestations attached via GitHub's attestation API.
@@ -577,9 +573,9 @@ Extended artifacts (`manifest.git-tree`, `go.env.json`) will appear with digests
 Compare your locally built digest with the published one:
 ```bash
 # Set your repository details
-OWNER="bytemare"  # Replace with actual repository owner
-REPO="workflows"  # Replace with actual repository name
-TAG="0.0.4"       # Replace with the tag you're verifying
+OWNER="<owner>"  # Replace with actual repository owner
+REPO="<repo>"  # Replace with actual repository name
+TAG="<tag>"       # Replace with the tag you're verifying
 
 # Your local digest
 local_digest=$(sha256sum dist/*.tar.gz | awk \'{print $1}\')
