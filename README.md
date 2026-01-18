@@ -15,6 +15,21 @@ Packaging is source-only and language-agnostic, and Go modules get extra Go-spec
 - 🛠️ **Easy Integration** - Plug-and-play with minimal setup
 - 📜 **Attached to release** - The example workflow below will attach all artifacts to the GitHub Release
 
+## Why this exists
+
+Most existing workflows stop at "build + provenance" or "SBOM + signatures." This project combines the full
+producer and consumer flows in one place:
+
+- **Deterministic packaging + hermetic rebuild proof** (reproducibility evidence, not just claims)
+- **Complete evidence bundle** attached to releases (subjects, checksums, manifests, metadata, SBOM, provenance)
+- **Consumer-grade verification** (script + reusable workflow) with full/quick/reproduce modes
+- **Verification Summary Attestation (VSA)** for policy results, signed by a verifier role
+- **Clear separation of duties** between packaging and verification
+
+We built it to lower integration cost while raising confidence: consumers get consistent, verifiable evidence
+out of the box, and producers get a repeatable, auditable release process that aligns with SLSA Level 3 today
+and prepares for future Level 4 compliance, pending GitHub to enable truly L4 hermetic builds.
+
 If you're looking to verify a release built with this workflow, see the [Release Verification & Reproducibility Guide](#release-verification--reproducibility-guide).
 
 ## Supported languages
