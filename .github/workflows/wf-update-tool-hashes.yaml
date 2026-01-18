@@ -1,0 +1,107 @@
+#
+# SPDX-License-Identifier: MIT
+#
+# Copyright (C) 2026 Daniel Bourdrez. All Rights Reserved.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree or at
+# https://spdx.org/licenses/MIT.html
+#
+
+name: Refresh Tool Hashes
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - .github/workflows/slsa.yaml
+      - .github/workflows/verify.yaml
+      - .github/renovate.json
+      - scripts/update-tool-versions.sh
+  workflow_dispatch:
+    inputs:
+      use_latest:
+        description: 'Use latest versions for all tools'
+        required: false
+        default: 'false'
+      cosign_version:
+        description: 'Override cosign version (default: current)'
+        required: false
+      gh_version:
+        description: 'Override gh version (default: current)'
+        required: false
+      jq_version:
+        description: 'Override jq version (default: current)'
+        required: false
+      slsa_verifier_version:
+        description: 'Override slsa-verifier version (default: current)'
+        required: false
+
+permissions: {}
+
+jobs:
+  refresh:
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        (!github.event.pull_request.head.repo.fork &&
+         (github.actor == 'renovate[bot]' || github.actor == 'renovate-bot' || github.actor == 'renovate'))
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@92c522aaa6f53af082553dedc1596c80b71aba33
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+
+      - name: Checkout PR branch
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout branch
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
+        with:
+          fetch-depth: 0
+
+      - name: Update tool hashes (dispatch)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          COSIGN_VERSION: ${{ github.event.inputs.use_latest == 'true' && 'latest' || github.event.inputs.cosign_version }}
+          GH_VERSION: ${{ github.event.inputs.use_latest == 'true' && 'latest' || github.event.inputs.gh_version }}
+          JQ_VERSION: ${{ github.event.inputs.use_latest == 'true' && 'latest' || github.event.inputs.jq_version }}
+          SLSA_VERIFIER_VERSION: ${{ github.event.inputs.use_latest == 'true' && 'latest' || github.event.inputs.slsa_verifier_version }}
+        run: |
+          set -euo pipefail
+          bash scripts/update-tool-versions.sh
+
+      - name: Update tool hashes (PR)
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          set -euo pipefail
+          bash scripts/update-tool-versions.sh
+
+      - name: Commit updates
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/slsa.yaml .github/workflows/verify.yaml
+          git commit -m "chore: refresh tool hashes"
+          git push
