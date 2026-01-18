@@ -236,7 +236,7 @@ jobs:
         if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
         uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f
         with:
-          node-version: '25.x'
+          node-version: '24.13.0'
 
       - name: Generate CycloneDX SBOM (generic)
         if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}

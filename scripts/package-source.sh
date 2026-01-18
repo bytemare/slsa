@@ -161,7 +161,7 @@ if [ "${EXTENDED_METADATA:-false}" = "true" ]; then
     printf '%s  %s\n' "$(sha256_of go.env.json)" go.env.json > go.env.json.sha256
   fi
 else
-  log "EXTENDED_METADATA disabled: skipping git tree and Go env snapshot"
+  log "EXTENDED_METADATA disabled: skipping git tree and language specific env snapshot"
 fi
 echo '::endgroup::'
 
