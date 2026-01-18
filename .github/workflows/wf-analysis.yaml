@@ -103,13 +103,8 @@ jobs:
     with:
       # Semgrep
       semgrep: true
-      # SonarQube
-      sonarqube: true
-      sonarqube-configuration: .github/sonar-project.properties
       # Gitleaks
       gitleaks: true
     secrets:
       # Semgrep token
       semgrep: ${{ secrets.SEMGREP_APP_TOKEN }}
-      # SonarQube token
-      sonarqube: ${{ secrets.SONAR_TOKEN }}
