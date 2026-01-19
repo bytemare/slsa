@@ -148,7 +148,7 @@ jobs:
             echo "${COSIGN_SHA256}  cosign" | sha256sum -c -
             install -m 0755 cosign /usr/local/bin/cosign
 
-            go install github.com/slsa-framework/slsa-verifier/v2/cmd/slsa-verifier@${{ inputs.slsa_verifier_version }}
+            go install github.com/slsa-framework/slsa-verifier/v2/cli/slsa-verifier@${{ inputs.slsa_verifier_version }}
             echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
           fi
 

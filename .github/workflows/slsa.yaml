@@ -385,7 +385,7 @@ jobs:
             -o jq "https://github.com/jqlang/jq/releases/download/${JQ_VERSION}/jq-linux-amd64"
           echo "${JQ_SHA256}  jq" | sha256sum -c -
           install -m 0755 jq /usr/local/bin/jq
-          go install github.com/slsa-framework/slsa-verifier/v2/cmd/slsa-verifier@"${SLSA_VERIFIER_VERSION}"
+          go install github.com/slsa-framework/slsa-verifier/v2/cli/slsa-verifier@"${SLSA_VERIFIER_VERSION}"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Verify release & emit VSA
