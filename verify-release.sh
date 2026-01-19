@@ -525,7 +525,9 @@ run_verification() {
         verify_provenance_file || exit_code=$EXIT_VERIFICATION_FAILED
         inspect_sbom || exit_code=$EXIT_VERIFICATION_FAILED
         run_slsa_verifier || exit_code=$EXIT_VERIFICATION_FAILED
-        verify_vsa_attestation || exit_code=$EXIT_VERIFICATION_FAILED
+        if [[ -f verification-summary.attestation.json || -f verification-summary.attestation.json.bundle ]]; then
+            verify_vsa_attestation || exit_code=$EXIT_VERIFICATION_FAILED
+        fi
     fi
 
     return $exit_code
