@@ -429,6 +429,24 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --clobber
 
+      - name: Verify uploaded VSA
+        if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
+        env:
+          COSIGN_EXPERIMENTAL: 1
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          for attempt in 1 2 3 4 5; do
+            if ./verify-release.sh --repo "${GITHUB_REPOSITORY}" --tag "${TAG}" --mode vsa; then
+              exit 0
+            fi
+            echo "VSA not available yet (attempt ${attempt}); retrying in 6s..." >&2
+            sleep 6
+          done
+          echo "VSA verification failed after retries" >&2
+          exit 1
+
       - name: Upload artifacts (PR dry run)
         if: ${{ inputs.dry_run }}
         uses: actions/upload-artifact@2848b2cda0e5190984587ec6bb1f36730ca78d50
