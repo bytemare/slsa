@@ -9,5 +9,50 @@
       "matchPackageNames": ["slsa-framework/slsa-github-generator"],
       "pinDigests": false
     }
+  ],
+  "regexManagers": [
+    {
+      "fileMatch": ["^\\.github/workflows/slsa\\.yaml$", "^\\.github/workflows/verify\\.yaml$"],
+      "matchStrings": ["cosign_version:\\s*\\n[\\s\\S]*?\\n\\s*default:\\s*(?<currentValue>[^\\s]+)"],
+      "depNameTemplate": "sigstore/cosign",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "fileMatch": ["^\\.github/workflows/slsa\\.yaml$"],
+      "matchStrings": ["gh_version:\\s*\\n[\\s\\S]*?\\n\\s*default:\\s*(?<currentValue>[^\\s]+)"],
+      "depNameTemplate": "cli/cli",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "fileMatch": ["^\\.github/workflows/slsa\\.yaml$"],
+      "matchStrings": ["jq_version:\\s*\\n[\\s\\S]*?\\n\\s*default:\\s*(?<currentValue>[^\\s]+)"],
+      "depNameTemplate": "jqlang/jq",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "fileMatch": ["^\\.github/workflows/slsa\\.yaml$", "^\\.github/workflows/verify\\.yaml$"],
+      "matchStrings": ["slsa_verifier_version:\\s*\\n[\\s\\S]*?\\n\\s*default:\\s*(?<currentValue>[^\\s]+)"],
+      "depNameTemplate": "slsa-framework/slsa-verifier",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "fileMatch": ["^\\.github/workflows/slsa\\.yaml$"],
+      "matchStrings": ["cdxgen_version:\\s*\\n[\\s\\S]*?\\n\\s*default:\\s*(?<currentValue>[^\\s]+)"],
+      "depNameTemplate": "@cyclonedx/cdxgen",
+      "datasourceTemplate": "npm"
+    },
+    {
+      "fileMatch": ["^\\.github/workflows/slsa\\.yaml$"],
+      "matchStrings": ["node_version:\\s*\\n[\\s\\S]*?\\n\\s*default:\\s*(?<currentValue>[^\\s]+)"],
+      "depNameTemplate": "node",
+      "datasourceTemplate": "node"
+    },
+    {
+      "fileMatch": ["^\\.github/workflows/slsa\\.yaml$", "^\\.github/workflows/verify\\.yaml$"],
+      "matchStrings": ["builder_image:\\s*\\n[\\s\\S]*?\\n\\s*default:\\s*golang:(?<currentValue>[^\\s]+)"],
+      "depNameTemplate": "golang",
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    }
   ]
 }

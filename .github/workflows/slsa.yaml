@@ -1,7 +1,7 @@
 #
 # SPDX-License-Identifier: MIT
 #
-# Copyright (C) 2025 Daniel Bourdrez. All Rights Reserved.
+# Copyright (C) 2026 Daniel Bourdrez. All Rights Reserved.
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree or at
@@ -10,7 +10,7 @@
 
 ---
 
-name: SLSA Build Level 4 Provenance and GitHub Artifact Attestations
+name: SLSA Build Level 3 Provenance and GitHub Artifact Attestations
 
 on:
   workflow_call:
@@ -56,6 +56,60 @@ on:
         type: string
         required: false
         default: v12.0.0
+      node_version:
+        description: >-
+          Node.js version for cdxgen (generic SBOM)
+        type: string
+        required: false
+        default: 24.13.0
+      builder_image:
+        description: >-
+          Builder image (with digest) used for packaging and rebuild verification
+        type: string
+        required: false
+        default: golang:1.25-bookworm@sha256:51b6b12427dc03451c24f7fc996c43a20e8a8e56f0849dd0db6ff6e9225cc892
+      cosign_version:
+        description: >-
+          Cosign version for signing/verification
+        type: string
+        required: false
+        default: v3.0.4
+      cosign_sha256:
+        description: >-
+          SHA-256 for the cosign Linux binary
+        type: string
+        required: false
+        default: 10dab2fd2170b5aa0d5c0673a9a2793304960220b314f6a873bf39c2f08287aa
+      gh_version:
+        description: >-
+          GitHub CLI version for VSA emission
+        type: string
+        required: false
+        default: v2.85.0
+      gh_sha256:
+        description: >-
+          SHA-256 for the GitHub CLI Linux tarball
+        type: string
+        required: false
+        default: 5dcc4e282b9c22c0d31c217805976448c966cfc56c20157c78385a8a62c93cf0
+      jq_version:
+        description: >-
+          jq version for verification helpers
+        type: string
+        required: false
+        default: jq-1.8.1
+      jq_sha256:
+        description: >-
+          SHA-256 for the jq Linux binary
+        type: string
+        required: false
+        default: 020468de7539ce70ef1bceaf7cde2e8c4f2ca6c3afb84642aabc5c97d9fc2a0d
+      slsa_verifier_version:
+        description: >-
+          slsa-verifier version (go install)
+        type: string
+        required: false
+        default: v2.7.1
 
 permissions: { }
 
@@ -75,8 +129,7 @@ jobs:
     runs-on: ubuntu-latest
     # Fully containerize to ensure hermetic, consistent environment.
     container:
-      image: >-
-        golang:1.25-bookworm@sha256:51b6b12427dc03451c24f7fc996c43a20e8a8e56f0849dd0db6ff6e9225cc892
+      image: ${{ inputs.builder_image }}
     permissions:
       actions: read
       contents: read
@@ -112,8 +165,7 @@ jobs:
           packaging_language: ${{ inputs.packaging_language }}
         env:
           # Persist the builder digest so build.env captures it for downstream verification.
-          SLSA_BUILDER_IMAGE: >-
-            golang:1.25-bookworm@sha256:42d8e9dea06f23d0bfc908826455213ee7f3ed48c43e287a422064220c501be9
+          SLSA_BUILDER_IMAGE: ${{ inputs.builder_image }}
 
       - name: Upload packaging bundle
         uses: actions/upload-artifact@2848b2cda0e5190984587ec6bb1f36730ca78d50
@@ -137,8 +189,7 @@ jobs:
     if: ${{ inputs.dry_run || github.ref_type == 'tag' }}
     runs-on: ubuntu-latest
     container:
-      image: >-
-        golang:1.25-bookworm@sha256:51b6b12427dc03451c24f7fc996c43a20e8a8e56f0849dd0db6ff6e9225cc892
+      image: ${{ inputs.builder_image }}
     permissions:
       actions: read
       attestations: write
@@ -220,12 +271,11 @@ jobs:
             echo "metadata_path=package/verification.json"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Install cosign (pinned)
+      - name: Install cosign
         if: ${{ !inputs.dry_run && inputs.sign_blobs }}
         env:
-          COSIGN_VERSION: v2.4.0
-          COSIGN_SHA256: >-
-            cd7636b3586a3bdac2d9c8f3b421ed119edcb20499107887fd929211110e8418
+          COSIGN_VERSION: ${{ inputs.cosign_version }}
+          COSIGN_SHA256: ${{ inputs.cosign_sha256 }}
         run: |
           set -euo pipefail
           curl -sSfL --proto '=https' --proto-redir '=https' --max-redirs 1 \
@@ -237,7 +287,7 @@ jobs:
         if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
         uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f
         with:
-          node-version: '24.13.0'
+          node-version: ${{ inputs.node_version }}
 
       - name: Generate CycloneDX SBOM (generic)
         if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
@@ -316,6 +366,28 @@ jobs:
             scripts/package-source.sh
             package/verification.json
 
+      - name: Install verification tools
+        if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
+        env:
+          GH_VERSION: ${{ inputs.gh_version }}
+          GH_SHA256: ${{ inputs.gh_sha256 }}
+          JQ_VERSION: ${{ inputs.jq_version }}
+          JQ_SHA256: ${{ inputs.jq_sha256 }}
+          SLSA_VERIFIER_VERSION: ${{ inputs.slsa_verifier_version }}
+        run: |
+          set -euo pipefail
+          curl -sSfL --proto '=https' --proto-redir '=https' --max-redirs 1 \
+            -o gh.tgz "https://github.com/cli/cli/releases/download/${GH_VERSION}/gh_${GH_VERSION#v}_linux_amd64.tar.gz"
+          echo "${GH_SHA256}  gh.tgz" | sha256sum -c -
+          tar -xzf gh.tgz
+          install -m 0755 "gh_${GH_VERSION#v}_linux_amd64/bin/gh" /usr/local/bin/gh
+          curl -sSfL --proto '=https' --proto-redir '=https' --max-redirs 1 \
+            -o jq "https://github.com/jqlang/jq/releases/download/${JQ_VERSION}/jq-linux-amd64"
+          echo "${JQ_SHA256}  jq" | sha256sum -c -
+          install -m 0755 jq /usr/local/bin/jq
+          go install github.com/slsa-framework/slsa-verifier/v2/cmd/slsa-verifier@"${SLSA_VERIFIER_VERSION}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
       - name: Verify release & emit VSA
         if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
         env:
@@ -381,8 +453,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       # Mirror the hermetic builder so the rebuild check uses identical bits.
-      image: >-
-        golang:1.25-bookworm@sha256:51b6b12427dc03451c24f7fc996c43a20e8a8e56f0849dd0db6ff6e9225cc892
+      image: ${{ inputs.builder_image }}
     permissions:
       contents: read
     steps:
@@ -410,8 +481,7 @@ jobs:
           packaging_language: ${{ inputs.packaging_language }}
         env:
           # The rebuild must mirror the original builder image to satisfy L4 reproducibility.
-          SLSA_BUILDER_IMAGE: >-
-            golang:1.25-bookworm@sha256:42d8e9dea06f23d0bfc908826455213ee7f3ed48c43e287a422064220c501be9
+          SLSA_BUILDER_IMAGE: ${{ inputs.builder_image }}
 
       - name: Compare digests
         # Fails fast if non-deterministic differences emerge.

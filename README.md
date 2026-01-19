@@ -15,6 +15,21 @@ Packaging is source-only and language-agnostic, and Go modules get extra Go-spec
 - 🛠️ **Easy Integration** - Plug-and-play with minimal setup
 - 📜 **Attached to release** - The example workflow below will attach all artifacts to the GitHub Release
 
+## Why this exists
+
+Most existing workflows stop at "build + provenance" or "SBOM + signatures." This project combines the full
+producer and consumer flows in one place:
+
+- **Deterministic packaging + hermetic rebuild proof** (reproducibility evidence, not just claims)
+- **Complete evidence bundle** attached to releases (subjects, checksums, manifests, metadata, SBOM, provenance)
+- **Consumer-grade verification** (script + reusable workflow) with full/quick/reproduce modes
+- **Verification Summary Attestation (VSA)** for policy results, signed by a verifier role
+- **Clear separation of duties** between packaging and verification
+
+We built it to lower integration cost while raising confidence: consumers get consistent, verifiable evidence
+out of the box, and producers get a repeatable, auditable release process that aligns with SLSA Level 3 today
+and prepares for future Level 4 compliance, pending GitHub to enable truly L4 hermetic builds.
+
 If you're looking to verify a release built with this workflow, see the [Release Verification & Reproducibility Guide](#release-verification--reproducibility-guide).
 
 ## Supported languages
@@ -75,7 +90,7 @@ chmod +x verify-release.sh
 # Run full verification (all artifacts)
 ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode full
 
-# Run containerized reproducibility check (requires Docker and rebuilds inside golang:1.25-bookworm@sha256:42d8e9de...))
+# Run containerized reproducibility check (requires Docker and rebuilds inside golang:1.25-bookworm@sha256:51b6b1...))
 ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode reproduce
 
 # Generate and sign a Verification Summary Attestation locally
@@ -144,31 +159,31 @@ The following table maps the current [SLSA v1.2-rc1](https://slsa.dev/spec/v1.2-
 
 > ⚠️ **Disclaimer:** While this workflow implements the controls listed below, achieving SLSA compliance also depends on organizational policies and practices beyond the scope of this automation, like mandatory reviews from at least one other person. Users should ensure that their overall processes align with these SLSA requirements.
 
-| SLSA v1.2 Requirement | Sub-requirement                                        | Compliant | Evidence                                                                                                                                                                      |
-|-----------------------|--------------------------------------------------------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Source**            |                                                        |           |                                                                                                                                                                               |
-| Version Control       | All source code is version controlled.                 | Yes       | The project is hosted on GitHub.                                                                                                                                              |
-| Verified History      | Commits are signed.                                    | Yes       | The project enforces signed commits.                                                                                                                                          |
-| Retained Indefinitely | Source is retained indefinitely.                       | Yes       | The project is hosted on GitHub.                                                                                                                                              |
-| **Build**             |                                                        |           |                                                                                                                                                                               |
-| Scripted Build        | The build process is fully scripted.                   | Yes       | The build is scripted in `.github/workflows/slsa.yaml` and `scripts/package-source.sh`.                                                                                       |
-| Build Service         | The build is performed by a build service.             | Yes       | The build is performed by GitHub Actions.                                                                                                                                     |
-| Build as Code         | The build definition is stored in version control.     | Yes       | The build definition is in `.github/workflows/slsa.yaml`.                                                                                                                     |
-| Ephemeral Environment | The build runs in an ephemeral environment.            | Yes       | The build runs in a container on GitHub Actions.                                                                                                                              |
-| Isolated Build        | The build is isolated from other builds.               | Yes       | The `package_source` job in `.github/workflows/slsa.yaml` uses `step-security/harden-runner` to isolate the build.                                                            |
-| Parameterless Build   | The build is parameterless.                            | Yes       | The build is triggered by a git tag and does not require any parameters.                                                                                                      |
-| Hermetic Build        | The build is hermetic.                                 | Yes       | The `package_source` job in `.github/workflows/slsa.yaml` has `egress-policy: block` and the `package-source.sh` script ensures a clean worktree.                             |
-| Reproducible Build    | The build is reproducible.                             | Yes       | The `rebuild_verify` job in `.github/workflows/slsa.yaml` verifies that the build is reproducible. The `verify-release.sh` script also provides a way to reproduce the build. |
-| **Provenance**        |                                                        |           |                                                                                                                                                                               |
-| Available             | Provenance is available.                               | Yes       | The `*.intoto.jsonl` file is the provenance.                                                                                                                                  |
-| Authenticated         | Provenance is authenticated.                           | Yes       | The provenance is signed using Sigstore and can be verified with `cosign`.                                                                                                    |
-| Service Generated     | Provenance is generated by the build service.          | Yes       | The provenance is generated by GitHub Actions using the `slsa-framework/slsa-github-generator`.                                                                               |
-| Non-Falsifiable       | Provenance is non-falsifiable.                         | Yes       | The provenance is signed and stored in a transparency log (Rekor).                                                                                                            |
-| Dependencies Complete | Provenance includes all dependencies.                  | Yes       | The SBOM (`sbom.cdx.json`) is generated and attested, listing all dependencies.                                                                                               |
-| **Common**            |                                                        |           |                                                                                                                                                                               |
-| Security              | The build service meets security requirements.         | Yes       | GitHub Actions is a hardened build service.                                                                                                                                   |
-| Access                | The build service has limited access to secrets.       | Yes       | The workflow uses minimal permissions.                                                                                                                                        |
-| Superusers            | The number of superusers is minimized.                 | Yes       | Access to the repository and secrets is restricted.                                                                                                                           |
+| SLSA v1.2 Requirement | Sub-requirement                                        | Compliant | Evidence                                                                                                                                                                                                    |
+|-----------------------|--------------------------------------------------------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Source**            |                                                        |           |                                                                                                                                                                                                             |
+| Version Control       | All source code is version controlled.                 | Yes       | The project is hosted on GitHub.                                                                                                                                                                            |
+| Verified History      | Commits are signed.                                    | Yes       | The project enforces signed commits.                                                                                                                                                                        |
+| Retained Indefinitely | Source is retained indefinitely.                       | Yes       | The project is hosted on GitHub.                                                                                                                                                                            |
+| **Build**             |                                                        |           |                                                                                                                                                                                                             |
+| Scripted Build        | The build process is fully scripted.                   | Yes       | The build is scripted in `.github/workflows/slsa.yaml` and `scripts/package-source.sh`.                                                                                                                     |
+| Build Service         | The build is performed by a build service.             | Yes       | The build is performed by GitHub Actions.                                                                                                                                                                   |
+| Build as Code         | The build definition is stored in version control.     | Yes       | The build definition is in `.github/workflows/slsa.yaml`.                                                                                                                                                   |
+| Ephemeral Environment | The build runs in an ephemeral environment.            | Yes       | The build runs in a container on GitHub Actions.                                                                                                                                                            |
+| Isolated Build        | The build is isolated from other builds.               | Yes       | The `package_source` job in `.github/workflows/slsa.yaml` uses `step-security/harden-runner` to isolate the build.                                                                                          |
+| Parameterless Build   | The build is parameterless.                            | Yes       | The build is triggered by a git tag and does not require any parameters.                                                                                                                                    |
+| Hermetic Build        | The build is hermetic.                                 | Yes       | The `package_source` job in `.github/workflows/slsa.yaml` only pulls from GitHub and blocks with `egress-policy: block`, and the `package-source.sh` script ensures a clean worktree and no network access. |
+| Reproducible Build    | The build is reproducible.                             | Yes       | The `rebuild_verify` job in `.github/workflows/slsa.yaml` verifies that the build is reproducible. The `verify-release.sh` script also provides a way to reproduce the build.                               |
+| **Provenance**        |                                                        |           |                                                                                                                                                                                                             |
+| Available             | Provenance is available.                               | Yes       | The `*.intoto.jsonl` file is the provenance.                                                                                                                                                                |
+| Authenticated         | Provenance is authenticated.                           | Yes       | The provenance is signed using Sigstore and can be verified with `cosign`.                                                                                                                                  |
+| Service Generated     | Provenance is generated by the build service.          | Yes       | The provenance is generated by GitHub Actions using the `slsa-framework/slsa-github-generator`.                                                                                                             |
+| Non-Falsifiable       | Provenance is non-falsifiable.                         | Yes       | The provenance is signed and stored in a transparency log (Rekor).                                                                                                                                          |
+| Dependencies Complete | Provenance includes all dependencies.                  | Yes       | The SBOM (`sbom.cdx.json`) is generated and attested, listing all dependencies.                                                                                                                             |
+| **Common**            |                                                        |           |                                                                                                                                                                                                             |
+| Security              | The build service meets security requirements.         | Yes       | GitHub Actions is a hardened build service.                                                                                                                                                                 |
+| Access                | The build service has limited access to secrets.       | Yes       | The workflow uses minimal permissions.                                                                                                                                                                      |
+| Superusers            | The number of superusers is minimized.                 | Yes       | Access to the repository and secrets is restricted.                                                                                                                                                         |
 
 ## Release Verification & Reproducibility Guide
 
@@ -272,7 +287,7 @@ chmod +x verify-release.sh
 # Run full verification (all artifacts)
 ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode full
 
-# Run containerized reproducibility check (uses golang:1.25-bookworm@sha256:42d8e9de...)
+# Run containerized reproducibility check (uses golang:1.25-bookworm@sha256:51b6b1...)
 ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode reproduce
 ```
 
@@ -284,7 +299,7 @@ chmod +x verify-release.sh
   and SBOM) fit together correctly, providing a much higher level of confidence in the integrity and
   authenticity of the release.
 - **reproduce** - Hermetic rebuild using the `SLSA_BUILDER_IMAGE` recorded in `build.env` (defaults to
-  `golang:1.25-bookworm@sha256:42d8e9dea06f23d0bfc908826455213ee7f3ed48c43e287a422064220c501be9`), yielding
+  `golang:1.25-bookworm@sha256:51b6b12427dc03451c24f7fc996c43a20e8a8e56f0849dd0db6ff6e9225cc892`), yielding
   independent evidence for future Level 4 expectations.
 
 The script automatically:
