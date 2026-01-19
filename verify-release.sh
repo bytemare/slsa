@@ -351,7 +351,7 @@ download_artifacts() {
     verify_step "Downloading release artifacts"
 
     for pattern in "${patterns[@]}"; do
-        gh release download "$TAG" --repo "$REPO" -p "$pattern" >/dev/null 2>&1 || true
+        gh release download "$TAG" --repo "$REPO" -p "$pattern" || true
     done
 
     if [[ "$MODE" == "vsa" ]]; then
@@ -752,8 +752,8 @@ run_repro_check() {
 
     # Pull the published subjects + build.env so we can reuse the exact builder image
     # and artifact digest captured during packaging.
-    gh release download "$TAG" --repo "$REPO" -p "subjects.sha256" --output "$subjects_tmp" >/dev/null
-    gh release download "$TAG" --repo "$REPO" -p "build.env" --output "$build_env_tmp" >/dev/null || true
+    gh release download "$TAG" --repo "$REPO" -p "subjects.sha256" --output "$subjects_tmp"
+    gh release download "$TAG" --repo "$REPO" -p "build.env" --output "$build_env_tmp" || true
 
     local artifact_filename expected_digest builder_from_env
     artifact_filename=$(awk 'NR==1 {print $2}' "$subjects_tmp")
