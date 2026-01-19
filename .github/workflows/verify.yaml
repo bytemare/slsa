@@ -151,7 +151,7 @@ jobs:
             go install github.com/slsa-framework/slsa-verifier/v2/cli/slsa-verifier@${{ inputs.slsa_verifier_version }}
             echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
           fi
-
+  
           if [[ "$need_docker" == "true" ]]; then
             docker info >/dev/null
             docker pull "${{ inputs.builder_image }}" >/dev/null
@@ -160,6 +160,7 @@ jobs:
       - name: Run verification modes
         env:
           COSIGN_EXPERIMENTAL: 1
+          GH_TOKEN: ${{ github.token }}
           GHA_MODES: ${{ steps.setup.outputs.modes }}
           GHA_EMIT_VSA: ${{ inputs.emit_vsa }}
           GHA_VERIFIER_ID: ${{ inputs.verifier_id }}

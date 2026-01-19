@@ -392,6 +392,7 @@ jobs:
         if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
         env:
           COSIGN_EXPERIMENTAL: 1
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
