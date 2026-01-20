@@ -4,12 +4,10 @@ This project provides a set of tools to help software producers build and publis
 - Reusable GitHub Actions Workflows for packaging and verifying releases
 - The `verify-release.sh` shell script helper for local verification and reproducibility checks (the same as used in the GitHub Actions verifier), including VSA generation
 
-Most existing workflows stop at "build + provenance" or "SBOM + signatures." This project combines the full producer and consumer flows in one place, with a lower integration cost while raising confidence: consumers get consistent, verifiable evidence
-out of the box, and producers get a repeatable, auditable release process that aligns with SLSA Level 3 today
-and prepares for future Level 4 compliance, pending GitHub to enable truly L4 hermetic builds.
+Building on the [SLSA generator](https://github.com/slsa-framework/slsa-github-generator) and [verifier](https://github.com/slsa-framework/slsa-verifier), and the [Sigstore](https://sigstore.dev/) ecosystem, these integrated workflows combine full producer and consumer flows with minimal setup.
 
 It provides:
-- 🔒 **SLSA Level 3 Compliance** - [Deterministic packaging](https://github.com/slsa-framework/slsa-github-generator) + hermetic reproducible builds with non-falsifiable provenance (to the extent of what GitHub provides)
+- 🔒 **SLSA Level 3 Compliance** - Provenance via the official [slsa-github-generator](https://github.com/slsa-framework/slsa-github-generator), plus deterministic packaging and hermetic reproducible builds (to the extent of what GitHub provides)
 - 🧭 **Level 4 Preparation** - Additional reproducibility materials to support an eventual Level 4 definition (Level 4 is not fully defined, yet)
 - 📦 **SBOM** - [CycloneDX Software Bill of Materials](https://cyclonedx.org/specification/overview/)
 - ✍️ **Keyless Signing** - [Cosign](https://github.com/sigstore/cosign) signatures with [Rekor](https://rekor.sigstore.dev) transparency logs
@@ -19,9 +17,13 @@ It provides:
 - 🛠️ **Easy Integration** - Plug-and-play with minimal setup
 - 📜 **Attached to release** - The example workflow below will attach all artifacts to the GitHub Release
 
+---
+
 ## Supported languages
 
 Source packaging works for any repo, and Go modules receive extra metadata (like `go env`) and use the Go-specific SBOM generator.
+
+---
 
 ## Release - how to use the workflow
 
@@ -61,6 +63,40 @@ jobs:
 ```
 
 `packaging_language=auto` detects `go.mod` in the tagged commit and enables Go-specific metadata only when present. `sbom_language=auto` uses the Go SBOM generator when `go.mod` exists, otherwise it runs cdxgen (pin `cdxgen_version` for deterministic output).
+
+### Inform your users
+
+You can use the following snippet in your repo to inform your consumers of the release integrity properties:
+
+> ## Release Integrity (SLSA Level 3)
+> Releases are built with the reusable [bytemare/slsa](https://github.com/bytemare/slsa) workflow and ship the evidence required for SLSA Level 3 compliance:
+>
+> - 📦 Artifacts are uploaded to the release page, and include the deterministic source archive plus subjects.sha256, signed SBOM (sbom.cdx.json), GitHub provenance (*.intoto.jsonl), a reproducibility report (verification.json), and a signed Verification Summary Attestation (verification-summary.attestation.json[.bundle]).
+> - ✍️ All artifacts are signed using [Sigstore](https://sigstore.dev) with transparency via [Rekor](https://rekor.sigstore.dev).
+> - ✅ Verification (or see the latest docs at [bytemare/slsa](https://github.com/bytemare/slsa)):
+> ```shell
+> curl -sSL https://raw.githubusercontent.com/bytemare/slsa/main/verify-release.sh -o verify-release.sh
+> chmod +x verify-release.sh
+> ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode full
+> ```
+> Add `--mode reproduce` to rerun the build in a container, or `--mode vsa` to validate just the verification summary.
+> - 🔁 Automated verification with the reusable verifier workflow from [bytemare/slsa](https://github.com/bytemare/slsa) in GitHub Actions:
+> ```yaml
+> permissions: {}
+> 
+> jobs:
+>   verify-release:
+>     uses: bytemare/slsa/.github/workflows/verify.yaml@<pinned-commit>
+>     with:
+>       repo: <owner>/<repo>
+>       tag: <tag>
+>       mode: full,reproduce
+>       emit_vsa: true
+>     permissions:
+>       contents: read
+> ```
+
+---
 
 ## Verify
 
@@ -111,37 +147,9 @@ jobs:
 
 For interactive runs, trigger `.github/workflows/wf-verify.yaml`. It uses same reusable verifier with sensible defaults.
 
-## Inform your users
+For the complete manual verification and reproducibility walkthrough, see [VERIFICATION_AND_REPRODUCIBILITY_GUIDE.md](VERIFICATION_AND_REPRODUCIBILITY_GUIDE.md).
 
-You can use the following snippet in your repo to inform your consumers of the release integrity properties:
-
-> ## Release Integrity (SLSA Level 3)
-> Releases are built with the reusable [bytemare/slsa](https://github.com/bytemare/slsa) workflow and ship the evidence required for SLSA Level 3 compliance:
->
-> - 📦 Artifacts are uploaded to the release page, and include the deterministic source archive plus subjects.sha256, signed SBOM (sbom.cdx.json), GitHub provenance (*.intoto.jsonl), a reproducibility report (verification.json), and a signed Verification Summary Attestation (verification-summary.attestation.json[.bundle]).
-> - ✍️ All artifacts are signed using [Sigstore](https://sigstore.dev) with transparency via [Rekor](https://rekor.sigstore.dev).
-> - ✅ Verification (or see the latest docs at [bytemare/slsa](https://github.com/bytemare/slsa)):
-> ```shell
-> curl -sSL https://raw.githubusercontent.com/bytemare/slsa/main/verify-release.sh -o verify-release.sh
-> chmod +x verify-release.sh
-> ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode full
-> ```
-> Add `--mode reproduce` to rerun the build in a container, or `--mode vsa` to validate just the verification summary.
-> - 🔁 Automated verification with the reusable verifier workflow from [bytemare/slsa](https://github.com/bytemare/slsa) in GitHub Actions:
-> ```yaml
-> permissions: {}
-> 
-> jobs:
->   verify-release:
->     uses: bytemare/slsa/.github/workflows/verify.yaml@<pinned-commit>
->     with:
->       repo: <owner>/<repo>
->       tag: <tag>
->       mode: full,reproduce
->       emit_vsa: true
->     permissions:
->       contents: read
-> ```
+---
 
 ## SLSA Alignment
 
@@ -177,12 +185,24 @@ The following table maps the current [SLSA v1.2-rc1](https://slsa.dev/spec/v1.2-
 | Access                | The build service has limited access to secrets.       | Yes       | The workflow uses minimal permissions.                                                                                                                                                                      |
 | Superusers            | The number of superusers is minimized.                 | Yes       | Access to the repository and secrets is restricted.                                                                                                                                                         |
 
+---
+
 ## Versioning and Compatibility
 
 Even though releases follow [Semantic Versioning](https://semver.org/), you should use the latest available commit hash from main.
+
+---
+
+## Additional Resources
+
+- **SLSA Framework:** <https://slsa.dev>
+- **CycloneDX SBOM:** <https://cyclonedx.org>
+- **Sigstore Documentation:** <https://docs.sigstore.dev>
+- **Cosign CLI:** <https://docs.sigstore.dev/cosign/overview>
+
+---
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE)
 file for details.
-

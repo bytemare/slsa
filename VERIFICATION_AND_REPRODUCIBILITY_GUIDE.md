@@ -1,16 +1,15 @@
-
-## Release Verification & Reproducibility Guide
+# Release Verification & Reproducibility Guide
 
 > **Quick Start:** Jump to [Quick Verification](#quick-verification) for basic checks.  
 > **Auditors/Packagers:** See [Complete Verification](#complete-verification-level-3--supplemental-evidence) and [Reproducing Builds Locally](#reproducing-builds-locally-preparing-slsa-level-4).
 
 - [Provided resources](#provided-resources)
-    - [Build Modes](#artifacts-depending-on-build-modes)
-        - [Core Artifacts](#core-artifacts-always-present)
-        - [Extended Artifacts](#extended-artifacts-optional)
+  - [Build Modes](#artifacts-depending-on-build-modes)
+    - [Core Artifacts](#core-artifacts-always-present)
+    - [Extended Artifacts](#extended-artifacts-optional)
 - [Quick Verification](#quick-verification)
-    - [Automated Verification (Recommended)](#automated-verification-recommended)
-    - [Manual Verification](#manual-verification)
+  - [Automated Verification (Recommended)](#automated-verification-recommended)
+  - [Manual Verification](#manual-verification)
 - [Complete Verification (Level 3 + supplemental evidence)](#complete-verification-level-3--supplemental-evidence)
 - [Reproducing Builds Locally (preparing SLSA Level 4)](#reproducing-builds-locally-preparing-slsa-level-4)
 - [Troubleshooting](#troubleshooting)
@@ -36,21 +35,21 @@ This verification process ensures:
 
 ---
 
-### Provided resources
+## Provided resources
 
 The workflow produces a comprehensive set of artifacts to support verification and reproducibility.
 The verification script helps you with automated checks (see [Quick Verification](#quick-verification)), but you can also perform manual verification if desired.
 
 ---
 
-### Artifacts depending on build modes
+## Artifacts depending on build modes
 
 | Mode               | Enable Via                | Artifacts                                               | Use Case                                      |
 |--------------------|---------------------------|---------------------------------------------------------|-----------------------------------------------|
 | **Lean** (default) | Default setting           | Core artifacts only                                     | Fast builds, sufficient for most verification |
 | **Extended**       | `extended_metadata: true` | + git tree + language-specific env (Go when applicable) | Deep forensics, regulatory compliance         |
 
-#### Core Artifacts (Always Present)
+### Core Artifacts (Always Present)
 
 | File                                                  | Purpose                                                                  | SLSA Alignment                                                    |
 |-------------------------------------------------------|--------------------------------------------------------------------------|-------------------------------------------------------------------|
@@ -69,7 +68,7 @@ The verification script helps you with automated checks (see [Quick Verification
 | `verification-summary.attestation.json` (+ `.bundle`) | Verification Summary Attestation documenting verification policy results | Supplemental signed verification summary for consumers            |
 | `scripts/package-source.sh`                           | Canonical packaging recipe                                               | Supplemental reproducible build script (future Level 4 readiness) |
 
-##### Extended Artifacts (Optional)
+#### Extended Artifacts (Optional)
 
 Enable with `extended_metadata: true` in workflow or `EXTENDED_METADATA=true` locally.
 
@@ -82,11 +81,11 @@ Enable with `extended_metadata: true` in workflow or `EXTENDED_METADATA=true` lo
 
 ---
 
-### Quick Verification
+## Quick Verification
 
 **For end users who want to verify authenticity quickly.**
 
-#### Automated Verification (Recommended)
+### Automated Verification (Recommended)
 
 The easiest way to verify a release is using the automated verification script:
 
@@ -124,18 +123,18 @@ The script automatically:
 - Tests reproducibility (in reproduce mode)
 - Provides concise one-line output with clear success/failure indicators
 
-#### Manual Verification
+### Manual Verification
 
 If you prefer to verify manually or understand the process:
 
-#### Prerequisites
+### Prerequisites
 - `shasum` or `sha256sum`
 - `cosign` (≥2.x)
 - `gh` CLI, `jq`
 - `docker` (only required for `--mode reproduce`)
 - `build.env` includes `SLSA_BUILDER_IMAGE=<digest>` to reconstruct the exact builder image (the verification script reads this automatically).
 
-#### Steps
+### Steps
 
 **1. Download artifacts**
 ```bash
@@ -175,18 +174,18 @@ cosign verify-blob \
 
 ---
 
-### Complete Verification (Level 3 + supplemental evidence)
+## Complete Verification (Level 3 + supplemental evidence)
 
 **For security auditors and compliance requirements.**
 
-#### 1. Verify SLSA Subjects Structure
+### 1. Verify SLSA Subjects Structure
 
 Confirm exactly 2 subjects (archive + checksums.txt):
 ```bash
 wc -l subjects.sha256  # Should output: 2
 ```
 
-#### 2. Verify Primary Archive Digest
+### 2. Verify Primary Archive Digest
 
 ```bash
 ART=$(find . -maxdepth 1 -name "*.tar.gz" -type f -print -quit)
@@ -194,14 +193,14 @@ sha256sum -- "${ART}" | diff -u - <(head -n1 subjects.sha256) \
   || echo "❌ Archive digest mismatch" >&2
 ```
 
-#### 3. Verify Checksums Manifest Digest
+### 3. Verify Checksums Manifest Digest
 
 ```bash
 sha256sum -- checksums.txt | diff -u - <(tail -n1 subjects.sha256) \
   || echo "❌ checksums.txt digest mismatch" >&2
 ```
 
-#### 4. Verify Per-File Content (Deep Check)
+### 4. Verify Per-File Content (Deep Check)
 
 First, download the manifest file:
 ```bash
@@ -228,7 +227,7 @@ echo "✅ Per-file content verified"
 cd "${MANIFEST_DIR}"
 ```
 
-#### 5. Verify Signatures (Alternative Methods)
+### 5. Verify Signatures (Alternative Methods)
 
 **Option A: Bundle files (recommended)**
 ```bash
@@ -253,7 +252,7 @@ cosign verify-blob \
   <file>
 ```
 
-#### 6. Inspect Certificate Claims (Implicit in Signature Verification)
+### 6. Inspect Certificate Claims (Implicit in Signature Verification)
 
 When using Sigstore bundles (`.bundle`), the certificate is securely packaged alongside the signature. The `cosign verify-blob` command automatically validates the entire certificate chain against the public Sigstore transparency log (Rekor).
 
@@ -261,7 +260,7 @@ When using Sigstore bundles (`.bundle`), the certificate is securely packaged al
 
 **Note on `.cert` files:** You may notice `.cert` files attached to releases. Depending on the `cosign` version and flags used during signing, these files may be empty, contain a single certificate, or even be a bundle themselves. Attempting to manually parse them can be misleading. The authoritative source for verification is always the `.bundle` file.
 
-#### 7. Verify GitHub Attestations
+### 7. Verify GitHub Attestations
 
 Download the tarball if not already present, then verify:
 ```bash
@@ -272,7 +271,7 @@ gh attestation verify --repo <owner>/<repo> "${ART}"
 
 **Note:** This verifies both SLSA provenance and SBOM attestations attached via GitHub's attestation API.
 
-#### 8. Verify SLSA Provenance File
+### 8. Verify SLSA Provenance File
 
 Download the provenance file, which is a Sigstore bundle in JSON format.
 
@@ -304,7 +303,7 @@ jq -r '.dsseEnvelope.payload' "$PROV" | base64 -d | jq '.'
 
 This allows an auditor to manually confirm the build type, builder ID, and other critical details.
 
-#### 9. Verify Verification Summary Attestation
+### 9. Verify Verification Summary Attestation
 
 ```bash
 gh release download <tag> -p 'verification-summary.attestation.json*'
@@ -327,7 +326,7 @@ jq -r '.predicate.policy.digest.sha256' verification-summary.attestation.json
 Push this digest through your own copy of the policy source to ensure it matches.
 Prefer automation? Run `./verify-release.sh --repo ${OWNER}/${REPO} --tag <tag> --mode vsa` to execute the signed verification summary checks end-to-end.
 
-#### 10. Inspect SBOM
+### 10. Inspect SBOM
 
 First, download the SBOM file:
 ```bash
@@ -343,7 +342,7 @@ jq '.components | length' sbom.cdx.json
 jq -r '.components[] | "\(.name)@\(.version)"' sbom.cdx.json | head -20
 ```
 
-#### 11. Check Reproducibility Report
+### 11. Check Reproducibility Report
 
 First, download the verification report:
 ```bash
@@ -365,11 +364,11 @@ Should show:
 
 ---
 
-### Reproducing Builds Locally (preparing SLSA Level 4)
+## Reproducing Builds Locally (preparing SLSA Level 4)
 
 **For distribution packagers and teams gathering future Level 4 evidence.**
 
-#### Lean Mode Reproduction
+### Lean Mode Reproduction
 
 ```bash
 TAG="v1.2.3"
@@ -389,7 +388,7 @@ export GITHUB_RUN_NUMBER=0
 bash scripts/package-source.sh
 ```
 
-#### Extended Mode Reproduction
+### Extended Mode Reproduction
 
 ```bash
 EXTENDED_METADATA=true bash scripts/package-source.sh
@@ -397,7 +396,7 @@ EXTENDED_METADATA=true bash scripts/package-source.sh
 
 Extended artifacts (`manifest.git-tree`, `go.env.json`) will appear with digests in `checksums.txt`.
 
-#### Verify Reproducibility
+### Verify Reproducibility
 
 Compare your locally built digest with the published one:
 ```bash
@@ -417,7 +416,7 @@ published_digest=$(curl -sL https://github.com/${OWNER}/${REPO}/releases/downloa
   echo "❌ Digest mismatch - not reproducible"
 ```
 
-#### Manual Minimal Commands
+### Manual Minimal Commands
 
 For understanding the core process:
 ```bash
@@ -437,9 +436,9 @@ printf '%s  %s\n' "$sha256" "$(basename "$ARCHIVE_PATH")" > subjects.sha256
 
 ---
 
-### Troubleshooting
+## Troubleshooting
 
-#### Common Issues & Solutions
+### Common Issues & Solutions
 
 | Issue                            | Likely Cause                                    | Solution                                                                             |
 |----------------------------------|-------------------------------------------------|--------------------------------------------------------------------------------------|
@@ -452,7 +451,9 @@ printf '%s  %s\n' "$sha256" "$(basename "$ARCHIVE_PATH")" > subjects.sha256
 | **Certificate inspection fails** | Manually parsing `.cert` file with bundles      | Trust `cosign verify-blob --bundle`. This handles certificate validation implicitly. |
 | **Invalid provenance structure** | Provenance is a Sigstore bundle, not plain JSON | Use `jq` and `base64` to decode the `.dsseEnvelope.payload` for manual inspection.   |
 
-#### Determinism Guarantees
+---
+
+## Determinism Guarantees
 
 The build process ensures reproducibility via:
 
@@ -471,14 +472,3 @@ The build process ensures reproducibility via:
 The release workflow separates artifact creation (`package_source`) from
 networked actions (`sbom_and_release`), ensuring the build step itself stays
 hermetic while attestations/signatures run with a tightly scoped allowlist.
-
----
-
-### Additional Resources
-
-- **SLSA Framework:** <https://slsa.dev>
-- **CycloneDX SBOM:** <https://cyclonedx.org>
-- **Sigstore Documentation:** <https://docs.sigstore.dev>
-- **Cosign CLI:** <https://docs.sigstore.dev/cosign/overview>
-
----
