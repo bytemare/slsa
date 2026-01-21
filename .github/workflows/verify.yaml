@@ -91,6 +91,29 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Resolve workflow source
+        id: workflow_source
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          repo="${WORKFLOW_REF%%/.github/workflows/*}"
+          ref="${WORKFLOW_REF##*@}"
+          if [[ -z "$repo" || -z "$ref" ]]; then
+            echo "Unable to parse workflow ref: ${WORKFLOW_REF}" >&2
+            exit 1
+          fi
+          echo "repo=${repo}" >> "$GITHUB_OUTPUT"
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout workflow repo
+        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
+        with:
+          repository: ${{ steps.workflow_source.outputs.repo }}
+          ref: ${{ steps.workflow_source.outputs.ref }}
+          path: slsa-workflow
+          fetch-depth: 1
+
       - name: Prepare tooling
         id: setup
         shell: bash
@@ -179,7 +202,7 @@ jobs:
           declare -a emit_args=()
           if [[ "$emit_vsa" == "true" ]]; then
             emit_args+=(--emit-vsa verification-summary.attestation.json)
-            emit_args+=(--policy-file verify-release.sh)
+            emit_args+=(--policy-file slsa-workflow/verify-release.sh)
             emit_args+=(--verifier-id "$verifier_id")
             if [[ -n "$policy_uri" ]]; then
               emit_args+=(--policy-uri "$policy_uri")
@@ -208,7 +231,7 @@ jobs:
             fi
 
             echo "Running verify-release.sh in $mode mode"
-            ./verify-release.sh \
+            ./slsa-workflow/verify-release.sh \
               --repo "${GHA_INPUT_REPO}" \
               --tag "${GHA_INPUT_TAG}" \
               --mode "$mode" \

@@ -157,9 +157,32 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Resolve workflow source
+        id: workflow_source
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          repo="${WORKFLOW_REF%%/.github/workflows/*}"
+          ref="${WORKFLOW_REF##*@}"
+          if [[ -z "$repo" || -z "$ref" ]]; then
+            echo "Unable to parse workflow ref: ${WORKFLOW_REF}" >&2
+            exit 1
+          fi
+          echo "repo=${repo}" >> "$GITHUB_OUTPUT"
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout workflow repo
+        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
+        with:
+          repository: ${{ steps.workflow_source.outputs.repo }}
+          ref: ${{ steps.workflow_source.outputs.ref }}
+          path: slsa-workflow
+          fetch-depth: 1
+
       - id: package
         name: Package reproducible source
-        uses: ./.github/actions/package
+        uses: ./slsa-workflow/.github/actions/package
         with:
           extended_metadata: ${{ inputs.extended_metadata }}
           packaging_language: ${{ inputs.packaging_language }}
@@ -226,6 +249,29 @@ jobs:
         uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
         with:
           fetch-depth: 0
+
+      - name: Resolve workflow source
+        id: workflow_source
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          repo="${WORKFLOW_REF%%/.github/workflows/*}"
+          ref="${WORKFLOW_REF##*@}"
+          if [[ -z "$repo" || -z "$ref" ]]; then
+            echo "Unable to parse workflow ref: ${WORKFLOW_REF}" >&2
+            exit 1
+          fi
+          echo "repo=${repo}" >> "$GITHUB_OUTPUT"
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout workflow repo
+        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
+        with:
+          repository: ${{ steps.workflow_source.outputs.repo }}
+          ref: ${{ steps.workflow_source.outputs.ref }}
+          path: slsa-workflow
+          fetch-depth: 1
 
       - id: sbom_lang
         name: Select SBOM generator
@@ -363,7 +409,7 @@ jobs:
             package/manifest.files.sha256
             package/commit.metadata
             package/build.env
-            scripts/package-source.sh
+            slsa-workflow/scripts/package-source.sh
             package/verification.json
 
       - name: Install verification tools
@@ -396,19 +442,21 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
-          WORKFLOW_VERIFIER_ID="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/slsa.yaml@${GITHUB_SHA}"
-          POLICY_URI="https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/verify-release.sh"
-          VERIFY_SCRIPT_SHA=$(sha256sum verify-release.sh | awk '{print $1}')
-          ./verify-release.sh \
+          WORKFLOW_REPO="${{ steps.workflow_source.outputs.repo }}"
+          WORKFLOW_REF="${{ steps.workflow_source.outputs.ref }}"
+          WORKFLOW_VERIFIER_ID="https://github.com/${WORKFLOW_REPO}/.github/workflows/slsa.yaml@${WORKFLOW_REF}"
+          POLICY_URI="https://github.com/${WORKFLOW_REPO}/blob/${WORKFLOW_REF}/verify-release.sh"
+          VERIFY_SCRIPT_SHA=$(sha256sum slsa-workflow/verify-release.sh | awk '{print $1}')
+          ./slsa-workflow/verify-release.sh \
             --repo "${GITHUB_REPOSITORY}" \
             --tag "${TAG}" \
             --mode full \
             --emit-vsa verification-summary.attestation.json \
             --verifier-id "${WORKFLOW_VERIFIER_ID}" \
-            --verifier-version "workflow_sha=${GITHUB_SHA}" \
+            --verifier-version "workflow_ref=${WORKFLOW_REF}" \
             --verifier-version "script_sha=${VERIFY_SCRIPT_SHA}" \
             --policy-uri "${POLICY_URI}" \
-            --policy-file verify-release.sh \
+            --policy-file slsa-workflow/verify-release.sh \
             --resource-uri "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
 
       - name: Cosign sign VSA
@@ -440,7 +488,7 @@ jobs:
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
           for attempt in 1 2 3 4 5; do
-            if ./verify-release.sh --repo "${GITHUB_REPOSITORY}" --tag "${TAG}" --mode vsa; then
+            if ./slsa-workflow/verify-release.sh --repo "${GITHUB_REPOSITORY}" --tag "${TAG}" --mode vsa; then
               exit 0
             fi
             echo "VSA not available yet (attempt ${attempt}); retrying in 6s..." >&2
@@ -463,7 +511,7 @@ jobs:
             package/manifest.files.sha256
             package/commit.metadata
             package/build.env
-            scripts/package-source.sh
+            slsa-workflow/scripts/package-source.sh
             package/verification.json
 
   rebuild_verify:
@@ -494,9 +542,32 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Resolve workflow source
+        id: workflow_source
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          repo="${WORKFLOW_REF%%/.github/workflows/*}"
+          ref="${WORKFLOW_REF##*@}"
+          if [[ -z "$repo" || -z "$ref" ]]; then
+            echo "Unable to parse workflow ref: ${WORKFLOW_REF}" >&2
+            exit 1
+          fi
+          echo "repo=${repo}" >> "$GITHUB_OUTPUT"
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout workflow repo
+        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
+        with:
+          repository: ${{ steps.workflow_source.outputs.repo }}
+          ref: ${{ steps.workflow_source.outputs.ref }}
+          path: slsa-workflow
+          fetch-depth: 1
+
       - id: repackage
         name: Re-run deterministic packaging
-        uses: ./.github/actions/package
+        uses: ./slsa-workflow/.github/actions/package
         with:
           extended_metadata: ${{ inputs.extended_metadata }}
           packaging_language: ${{ inputs.packaging_language }}
