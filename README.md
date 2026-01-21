@@ -31,7 +31,6 @@ Source packaging works for any repo, and Go modules receive extra metadata (like
 
 Replace `[pinned commit SHA]` to ensure stability. `workflow_ref` is required and
 must match the same pinned ref so helper scripts are fetched from the same commit.
-Set `workflow_repo` only if you are using a fork.
 
 ```yaml
 ---
@@ -52,7 +51,7 @@ jobs:
   release:
     uses: bytemare/slsa/.github/workflows/slsa.yaml@[pinned commit SHA]
     with:
-      workflow_ref: [pinned commit SHA] # keep helper scripts pinned to the same ref
+      workflow_ref: [pinned commit SHA] # required, ensures stable helper scripts
       dry_run: ${{ github.event_name == 'pull_request' }} # optional, default: false
       create_release: ${{ github.event_name != 'pull_request' }} # optional, default: true
       extended_metadata: false  # optional, default: false. Set to true for forensics mode.
@@ -91,7 +90,7 @@ You can use the following snippet in your repo to inform your consumers of the r
 >   verify-release:
 >     uses: bytemare/slsa/.github/workflows/verify.yaml@<pinned-commit>
 >     with:
->       workflow_ref: <pinned-commit> # keep helper scripts pinned to the same ref
+>       workflow_ref: <pinned-commit>
 >       repo: <owner>/<repo>
 >       tag: <tag>
 >       mode: full,reproduce
