@@ -87,6 +87,19 @@ Enable with `extended_metadata: true` in workflow or `EXTENDED_METADATA=true` lo
 
 If you want a quick verification, refer to the automated script instructions in the [README](README.md).
 
+If you run the reusable workflows, `workflow_ref` is required and must match the ref in `uses: ...@<ref>`. If you use a fork, also set `workflow_repo` to your fork so the workflow can fetch its helper scripts.
+
+Example (for forks):
+
+```yaml
+jobs:
+  release:
+    uses: <your-org>/<your-repo>/.github/workflows/slsa.yaml@<pinned-commit>
+    with:
+      workflow_repo: <your-org>/<your-repo>
+      workflow_ref: <pinned-commit>
+```
+
 ### Manually verifying the tarball
 
 This quick manual verification only checks the tarball. For complete verification of all metadata files, see the Complete Verification section below or use the automated script with `--mode full`.
