@@ -104,7 +104,7 @@ OUTDIR=dist
 mkdir -p "$OUTDIR"
 ARCHIVE_PATH="${OUTDIR}/${BASENAME}.tar.gz"
 # Helper hash function.
-sha256_of() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'; else shasum -a 256 "$1" | awk '{print $1}'; fi; }
+sha256_of() { sha256sum -- "$1" | awk '{print $1}'; }
 echo '::endgroup::'
 
 echo '::group::Create deterministic archive'

@@ -2,7 +2,7 @@
 #
 # Updates tool versions and SHA256 pins in workflow defaults.
 #
-# Requirements: curl, python3, sha256sum or shasum
+# Requirements: curl, python3, sha256sum
 #
 # Optional env overrides:
 #   COSIGN_VERSION, GH_VERSION, JQ_VERSION, SLSA_VERIFIER_VERSION
@@ -17,13 +17,10 @@ WORKFLOW_VERIFY="${ROOT_DIR}/.github/workflows/verify.yaml"
 need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing required tool: $1" >&2; exit 1; }; }
 need curl
 need python3
+need sha256sum
 
 sha256_of() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" | awk '{print $1}'
-  else
-    shasum -a 256 "$1" | awk '{print $1}'
-  fi
+  sha256sum "$1" | awk '{print $1}'
 }
 
 latest_tag() {

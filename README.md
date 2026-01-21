@@ -123,7 +123,28 @@ chmod +x verify-release.sh
 ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode vsa
 ```
 
-Need a signed verification summary? Combine `--mode full` with `--emit-vsa <file> --verifier-id <uri>` (plus optional policy metadata) to generate a [Verification Summary Attestation](https://slsa.dev/spec/v1.1/verification_summary).
+**Verification Modes:**
+- **quick** (default) - Basic checksum and signature verification (fast, recommended for most users).
+- **full** - Complete verification of all release artifacts including SBOM and provenance. This mode uses the
+  official `slsa-verifier` to verify the provenance and additionally provides a holistic verification of the
+  entire release, ensuring that all the pieces of the puzzle (artifacts, signatures, attestations, provenance,
+  and SBOM) fit together correctly, providing a much higher level of confidence in the integrity and
+  authenticity of the release.
+- **reproduce** - Hermetic rebuild using the `SLSA_BUILDER_IMAGE` recorded in `build.env` (defaults to
+  `golang:1.25-bookworm@sha256:51b6b12427dc03451c24f7fc996c43a20e8a8e56f0849dd0db6ff6e9225cc892`), yielding
+  independent evidence for future Level 4 expectations.
+
+The script automatically:
+- Checks for required tools (gh, jq, cosign, openssl, sha256sum, git for full mode)
+- Downloads all necessary artifacts
+- Verifies checksums and signatures
+- Validates SLSA provenance and SBOM (in full mode)
+- Tests reproducibility (in reproduce mode)
+- Provides concise one-line output with clear success/failure indicators
+
+**Need a signed verification summary?**
+
+Combine `--mode full` with `--emit-vsa <file> --verifier-id <uri>` (plus optional policy metadata) to generate a [Verification Summary Attestation](https://slsa.dev/spec/v1.1/verification_summary).
 
 **Why does VSA generation live in `verify-release.sh`?**
 
