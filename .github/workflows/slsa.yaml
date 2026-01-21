@@ -189,6 +189,7 @@ jobs:
           SLSA_BUILDER_IMAGE: ${{ inputs.builder_image }}
         run: |
           set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           bash slsa-workflow/scripts/package-source.sh
 
       - name: Upload packaging bundle
@@ -575,6 +576,7 @@ jobs:
           SLSA_BUILDER_IMAGE: ${{ inputs.builder_image }}
         run: |
           set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           bash slsa-workflow/scripts/package-source.sh
 
       - name: Compare digests
