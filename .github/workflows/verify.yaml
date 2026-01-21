@@ -249,6 +249,7 @@ jobs:
               --repo "${GHA_INPUT_REPO}" \
               --tag "${GHA_INPUT_TAG}" \
               --mode "$mode" \
+              --signer-repo "${{ inputs.workflow_repo }}" \
               "${extra_args[@]}"
           done
 

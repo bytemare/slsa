@@ -87,7 +87,7 @@ Enable with `extended_metadata: true` in workflow or `EXTENDED_METADATA=true` lo
 
 If you want a quick verification, refer to the automated script instructions in the [README](README.md).
 
-If you run the reusable workflows, `workflow_ref` is required and must match the ref in `uses: ...@<ref>`. If you use a fork, also set `workflow_repo` to your fork so the workflow can fetch its helper scripts.
+If you run the reusable workflows, `workflow_ref` is required and must match the ref in `uses: ...@<ref>`. If you use a fork, also set `workflow_repo` to your fork so the workflow can fetch its helper scripts. When running `verify-release.sh` in `full` mode, pass `--signer-repo <workflow-repo>` (or `--signer-workflow`) so `gh attestation verify` validates the reusable workflow signer correctly.
 
 Example (for forks):
 

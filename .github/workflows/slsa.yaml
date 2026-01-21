@@ -474,6 +474,7 @@ jobs:
             --verifier-version "script_sha=${VERIFY_SCRIPT_SHA}" \
             --policy-uri "${POLICY_URI}" \
             --policy-file slsa-workflow/verify-release.sh \
+            --signer-repo "${WORKFLOW_REPO}" \
             --resource-uri "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
 
       - name: Cosign sign VSA
