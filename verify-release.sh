@@ -124,7 +124,7 @@ Examples:
   $0 --repo bytemare/workflows --tag 0.0.4 --mode vsa
   $0 --repo bytemare/workflows --tag 0.0.4 --mode full --emit-vsa my.vsa.json --verifier-id https://example.com/verifier
 
-Note: VSA emission happens after all checks succeed to preserve a verifier/producer separation—a consumer or CI policy can trust the summary because it was generated post-release by the verification workflow, not during packaging.
+Note: VSA emission happens after all checks succeed to preserve a verifier/producer separation. A consumer or CI policy can trust the summary because it was generated post-release by the verification workflow, not during packaging.
 
 EOF
 

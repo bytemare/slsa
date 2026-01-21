@@ -47,4 +47,9 @@ runs:
         GITHUB_RUN_NUMBER: ${{ github.run_number }}
       run: |
         set -euo pipefail
-        bash scripts/package-source.sh
+        SCRIPT_PATH="${GITHUB_ACTION_PATH}/../../../scripts/package-source.sh"
+        if [[ ! -f "$SCRIPT_PATH" ]]; then
+          echo "Missing packaging script: ${SCRIPT_PATH}" >&2
+          exit 1
+        fi
+        bash "$SCRIPT_PATH"
