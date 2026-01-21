@@ -182,13 +182,15 @@ jobs:
 
       - id: package
         name: Package reproducible source
-        uses: ./slsa-workflow/.github/actions/package
-        with:
-          extended_metadata: ${{ inputs.extended_metadata }}
-          packaging_language: ${{ inputs.packaging_language }}
         env:
+          EXTENDED_METADATA: ${{ inputs.extended_metadata }}
+          PACKAGING_LANGUAGE: ${{ inputs.packaging_language }}
           # Persist the builder digest so build.env captures it for downstream verification.
           SLSA_BUILDER_IMAGE: ${{ inputs.builder_image }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          bash slsa-workflow/scripts/package-source.sh
 
       - name: Upload packaging bundle
         uses: actions/upload-artifact@2848b2cda0e5190984587ec6bb1f36730ca78d50
@@ -567,13 +569,15 @@ jobs:
 
       - id: repackage
         name: Re-run deterministic packaging
-        uses: ./slsa-workflow/.github/actions/package
-        with:
-          extended_metadata: ${{ inputs.extended_metadata }}
-          packaging_language: ${{ inputs.packaging_language }}
         env:
+          EXTENDED_METADATA: ${{ inputs.extended_metadata }}
+          PACKAGING_LANGUAGE: ${{ inputs.packaging_language }}
           # The rebuild must mirror the original builder image to satisfy L4 reproducibility.
           SLSA_BUILDER_IMAGE: ${{ inputs.builder_image }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          bash slsa-workflow/scripts/package-source.sh
 
       - name: Compare digests
         # Fails fast if non-deterministic differences emerge.
