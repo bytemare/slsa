@@ -79,7 +79,7 @@ You can use the following snippet in your repo to inform your consumers of the r
 > ```shell
 > curl -sSL https://raw.githubusercontent.com/bytemare/slsa/main/verify-release.sh -o verify-release.sh
 > chmod +x verify-release.sh
-> ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode full
+> ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode full --signer-repo <workflow-repo>
 > ```
 > Add `--mode reproduce` to rerun the build in a container, or `--mode vsa` to validate just the verification summary.
 > - 🔁 Automated verification with the reusable verifier workflow from [bytemare/slsa](https://github.com/bytemare/slsa) in GitHub Actions:
@@ -104,6 +104,8 @@ You can use the following snippet in your repo to inform your consumers of the r
 ## Verify
 
 Quick verification using the helper script:
+
+`<workflow-repo>` should match the reusable workflow repo that produced the attestations (for example, `bytemare/slsa` or your fork).
 ```bash
 # Download the verification script
 curl -sSL https://raw.githubusercontent.com/bytemare/slsa/main/verify-release.sh -o verify-release.sh
@@ -113,13 +115,13 @@ chmod +x verify-release.sh
 ./verify-release.sh --repo <owner>/<repo> --tag <tag>
 
 # Run full verification (all artifacts)
-./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode full
+./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode full --signer-repo <workflow-repo>
 
 # Run containerized reproducibility check (requires Docker and rebuilds inside a container)
 ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode reproduce
 
 # Generate and sign a Verification Summary Attestation locally
-./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode full \
+./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode full --signer-repo <workflow-repo> \
   --emit-vsa my-release.vsa.json --verifier-id https://example.com/verifier
 
 # Verify the published Verification Summary Attestation only

@@ -63,6 +63,8 @@ VERIFIED_LEVELS=()
 RESOURCE_URI=""
 SLSA_VERSION="1.1"
 TIME_VERIFIED_OVERRIDE=""
+SIGNER_REPO=""
+SIGNER_WORKFLOW=""
 
 # Print a verification step
 verify_step() {
@@ -112,6 +114,8 @@ Optional Arguments:
   --policy-uri URI     URI of the verification policy being applied (optional)
   --policy-file PATH   File used to compute the policy digest (defaults to this script)
   --verified-level L   Append a verified SLSA level (repeatable, default: SLSA_BUILD_LEVEL_3)
+  --signer-repo REPO   Reusable workflow repo that signed attestations (owner/repo)
+  --signer-workflow W  Reusable workflow file that signed attestations (owner/repo/path)
   --resource-uri URI   Resource URI describing the artifact under verification
   --time-verified TS   Override the VSA timeVerified field (RFC3339, defaults to current time)
   --slsa-version VER   Predicated SLSA version for the VSA (default: 1.1)
@@ -123,6 +127,7 @@ Examples:
   $0 --repo bytemare/workflows --tag 0.0.4 --mode reproduce
   $0 --repo bytemare/workflows --tag 0.0.4 --mode vsa
   $0 --repo bytemare/workflows --tag 0.0.4 --mode full --emit-vsa my.vsa.json --verifier-id https://example.com/verifier
+  $0 --repo bytemare/workflows --tag 0.0.4 --mode full --signer-repo bytemare/slsa
 
 Note: VSA emission happens after all checks succeed to preserve a verifier/producer separation. A consumer or CI policy can trust the summary because it was generated post-release by the verification workflow, not during packaging.
 
@@ -174,6 +179,14 @@ parse_args() {
                 ;; 
             --resource-uri)
                 RESOURCE_URI="$2"
+                shift 2
+                ;; 
+            --signer-repo)
+                SIGNER_REPO="$2"
+                shift 2
+                ;; 
+            --signer-workflow)
+                SIGNER_WORKFLOW="$2"
                 shift 2
                 ;; 
             --time-verified)
@@ -457,10 +470,20 @@ verify_attestations() {
     verify_step "Verifying GitHub attestations"
     local tarball
     tarball=$(find . -maxdepth 1 -name "*.tar.gz" -type f -print -quit)
-    if gh attestation verify --repo "$REPO" "$tarball" &> /dev/null; then
+    local -a args
+    args=(--repo "$REPO")
+    if [[ -n "$SIGNER_REPO" ]]; then
+        args+=(--signer-repo "$SIGNER_REPO")
+    fi
+    if [[ -n "$SIGNER_WORKFLOW" ]]; then
+        args+=(--signer-workflow "$SIGNER_WORKFLOW")
+    fi
+    local output
+    if output=$(gh attestation verify "${args[@]}" "$tarball" 2>&1); then
         verify_ok
     else
         verify_fail "Attestation verification failed"
+        echo "$output" >&2
         return 1
     fi
 
