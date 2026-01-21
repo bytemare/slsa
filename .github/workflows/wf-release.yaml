@@ -30,6 +30,7 @@ jobs:
       create_release: ${{ github.event_name != 'pull_request' }}
       sign_blobs: true
       extended_metadata: false # Set to true for forensics mode
+      workflow_ref: ${{ github.sha }}
     permissions:
       contents: write               # create/update release & upload assets
       id-token: write               # OIDC for attestations/provenance

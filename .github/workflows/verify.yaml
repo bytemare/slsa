@@ -55,6 +55,19 @@ on:
         type: string
         required: false
         default: v2.7.1
+      workflow_repo:
+        description: >-
+          Reusable workflow repository (owner/repo) to fetch helper scripts. This is only useful for
+          forks of the workflow so that they can point to their own repo.
+        type: string
+        required: false
+        default: bytemare/slsa
+      workflow_ref:
+        description: >-
+          Reusable workflow ref to check out (tag/sha/branch). Set this to the
+          same ref used in the caller's uses: statement to keep scripts pinned.
+        type: string
+        required: true
       builder_image:
         description: 'Builder image (with digest) for reproduce pre-pull'
         type: string
@@ -94,13 +107,14 @@ jobs:
       - name: Resolve workflow source
         id: workflow_source
         env:
-          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_REPO_INPUT: ${{ inputs.workflow_repo }}
+          WORKFLOW_REF_INPUT: ${{ inputs.workflow_ref }}
         run: |
           set -euo pipefail
-          repo="${WORKFLOW_REF%%/.github/workflows/*}"
-          ref="${WORKFLOW_REF##*@}"
-          if [[ -z "$repo" || -z "$ref" ]]; then
-            echo "Unable to parse workflow ref: ${WORKFLOW_REF}" >&2
+          repo="${WORKFLOW_REPO_INPUT:-bytemare/slsa}"
+          ref="${WORKFLOW_REF_INPUT}"
+          if [[ -z "$ref" ]]; then
+            echo "Missing required input: workflow_ref (set to the same ref as uses: ...@<ref>)" >&2
             exit 1
           fi
           echo "repo=${repo}" >> "$GITHUB_OUTPUT"
