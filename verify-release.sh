@@ -256,11 +256,7 @@ parse_args() {
 
 sha256_of() {
     local file="$1"
-    if command -v sha256sum &> /dev/null; then
-        sha256sum -- "$file" | awk '{print $1}'
-    else
-        shasum -a 256 -- "$file" | awk '{print $1}'
-    fi
+    sha256sum -- "$file" | awk '{print $1}'
 }
 
 # Check for required tools
@@ -274,8 +270,8 @@ check_tools() {
         required_tools+=("slsa-verifier")
     fi
 
-    if ! command -v sha256sum &> /dev/null && ! command -v shasum &> /dev/null; then
-        missing_tools+=("sha256sum or shasum")
+    if ! command -v sha256sum &> /dev/null; then
+        missing_tools+=("sha256sum")
     fi
 
     for tool in "${required_tools[@]}"; do
@@ -406,11 +402,7 @@ verify_tarball_checksum() {
     local tarball
     tarball=$(find . -maxdepth 1 -name "*.tar.gz" -type f -print -quit)
     local computed_hash
-    if command -v sha256sum &> /dev/null; then
-        computed_hash=$(sha256sum -- "$tarball" | awk '{print $1}')
-    else
-        computed_hash=$(shasum -a 256 -- "$tarball" | awk '{print $1}')
-    fi
+    computed_hash=$(sha256sum -- "$tarball" | awk '{print $1}')
     local expected_hash
     expected_hash=$(head -n1 subjects.sha256 | awk '{print $1}')
     if [[ "$computed_hash" == "$expected_hash" ]]; then
@@ -426,11 +418,7 @@ verify_tarball_checksum() {
 verify_checksums_manifest() {
     verify_step "Verifying checksums manifest"
     local computed_hash
-    if command -v sha256sum &> /dev/null; then
-        computed_hash=$(sha256sum -- checksums.txt | awk '{print $1}')
-    else
-        computed_hash=$(shasum -a 256 -- checksums.txt | awk '{print $1}')
-    fi
+    computed_hash=$(sha256sum -- checksums.txt | awk '{print $1}')
     local expected_hash
     expected_hash=$(tail -n1 subjects.sha256 | awk '{print $1}')
     if [[ "$computed_hash" == "$expected_hash" ]]; then

@@ -35,6 +35,8 @@ permissions: {}
 jobs:
   quick_verification:
     if: ${{ github.event.inputs.mode == 'quick' }}
+    permissions:
+      contents: read
     uses: ./.github/workflows/verify.yaml
     with:
       repo: ${{ github.event.inputs.repo || github.repository }}
@@ -43,6 +45,8 @@ jobs:
 
   full_verification:
     if: ${{ contains(github.event.inputs.mode, 'full') || !github.event.inputs.mode }}
+    permissions:
+      contents: read
     uses: ./.github/workflows/verify.yaml
     with:
       repo: ${{ github.event.inputs.repo || github.repository }}
@@ -53,6 +57,8 @@ jobs:
 
   reproduce_verification:
     if: contains(github.event.inputs.mode, 'reproduce')
+    permissions:
+      contents: read
     uses: ./.github/workflows/verify.yaml
     with:
       repo: ${{ github.event.inputs.repo || github.repository }}
@@ -61,6 +67,8 @@ jobs:
 
   vsa_only:
     if: ${{ github.event.inputs.mode == 'vsa' }}
+    permissions:
+      contents: read
     uses: ./.github/workflows/verify.yaml
     with:
       repo: ${{ github.event.inputs.repo || github.repository }}
