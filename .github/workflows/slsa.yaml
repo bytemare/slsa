@@ -469,6 +469,7 @@ jobs:
             release-assets.githubusercontent.com:443
             pipelines.actions.githubusercontent.com:443
             artifactcache.actions.githubusercontent.com:443
+            tmaproduction.blob.core.windows.net:443
             fulcio.sigstore.dev:443
             rekor.sigstore.dev:443
             tuf-repo-cdn.sigstore.dev:443

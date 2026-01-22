@@ -37,6 +37,7 @@ jobs:
     if: ${{ github.event.inputs.mode == 'quick' }}
     permissions:
       contents: read
+      id-token: write
     uses: ./.github/workflows/verify.yaml
     with:
       repo: ${{ github.event.inputs.repo || github.repository }}
@@ -48,6 +49,7 @@ jobs:
     if: ${{ contains(github.event.inputs.mode, 'full') || !github.event.inputs.mode }}
     permissions:
       contents: read
+      id-token: write
     uses: ./.github/workflows/verify.yaml
     with:
       repo: ${{ github.event.inputs.repo || github.repository }}
@@ -61,6 +63,7 @@ jobs:
     if: contains(github.event.inputs.mode, 'reproduce')
     permissions:
       contents: read
+      id-token: write
     uses: ./.github/workflows/verify.yaml
     with:
       repo: ${{ github.event.inputs.repo || github.repository }}
@@ -72,6 +75,7 @@ jobs:
     if: ${{ github.event.inputs.mode == 'vsa' }}
     permissions:
       contents: read
+      id-token: write
     uses: ./.github/workflows/verify.yaml
     with:
       repo: ${{ github.event.inputs.repo || github.repository }}
