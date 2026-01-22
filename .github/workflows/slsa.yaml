@@ -611,6 +611,7 @@ jobs:
     needs: [sbom_and_release, provenance_slsa]
     permissions:
       contents: read
+      id-token: write
     uses: ./.github/workflows/verify.yaml
     with:
       repo: ${{ github.repository }}

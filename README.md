@@ -100,6 +100,7 @@ You can use the following snippet in your repo to inform your consumers of the r
 >       emit_vsa: true
 >     permissions:
 >       contents: read
+>       id-token: write
 > ```
 
 ---
@@ -173,6 +174,9 @@ jobs:
       mode: full,reproduce   # run multiple modes sequentially
       emit_vsa: true         # optional – uploads a signed verification summary (requires full)
       verifier_id: <https://example.com/trusted-verifier> # optional – URI to identify the verifier in the VSA
+    permissions:
+      contents: read
+      id-token: write
 ```
 
 For interactive runs, trigger `.github/workflows/wf-verify.yaml`. It uses same reusable verifier with sensible defaults.
