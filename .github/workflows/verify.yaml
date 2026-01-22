@@ -76,6 +76,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   verify:
@@ -99,6 +100,7 @@ jobs:
             release-assets.githubusercontent.com:443
             storage.googleapis.com:443
             sum.golang.org:443
+            tmaproduction.blob.core.windows.net:443
             tuf-repo-cdn.sigstore.dev:443
             tuf-repo.github.com:443
             uploads.github.com:443
@@ -208,6 +210,7 @@ jobs:
           GHA_POLICY_URI: ${{ inputs.policy_uri }}
           GHA_INPUT_REPO: ${{ inputs.repo }}
           GHA_INPUT_TAG: ${{ inputs.tag }}
+          GHA_WORKFLOW_REPO: ${{ inputs.workflow_repo }}
         shell: bash
         run: |
           set -euo pipefail
@@ -243,9 +246,6 @@ jobs:
               if [[ "$emit_vsa" == "true" ]]; then
                 extra_args+=("${emit_args[@]}")
               fi
-            elif [[ "$mode" == "reproduce" && "$emit_vsa" == "true" ]]; then
-              echo "emit_vsa is only supported with full mode" >&2
-              exit 1
             fi
 
             echo "Running verify-release.sh in $mode mode"
@@ -253,7 +253,7 @@ jobs:
               --repo "${GHA_INPUT_REPO}" \
               --tag "${GHA_INPUT_TAG}" \
               --mode "$mode" \
-              --signer-repo "${{ inputs.workflow_repo }}" \
+              --signer-repo "${GHA_WORKFLOW_REPO}" \
               "${extra_args[@]}"
           done
 
@@ -261,6 +261,19 @@ jobs:
             echo "emit_vsa requested but no full mode was executed" >&2
             exit 1
           fi
+
+      - name: Sign emitted VSA
+        if: ${{ inputs.emit_vsa }}
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          set -euo pipefail
+          if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]]; then
+            echo "emit_vsa requires id-token: write permissions" >&2
+            exit 1
+          fi
+          rm -f verification-summary.attestation.json.bundle
+          cosign sign-blob --yes --bundle verification-summary.attestation.json.bundle verification-summary.attestation.json
 
       - name: Upload VSA artifact
         if: ${{ inputs.emit_vsa }}

@@ -469,6 +469,7 @@ jobs:
             release-assets.githubusercontent.com:443
             pipelines.actions.githubusercontent.com:443
             artifactcache.actions.githubusercontent.com:443
+            tmaproduction.blob.core.windows.net:443
             fulcio.sigstore.dev:443
             rekor.sigstore.dev:443
             tuf-repo-cdn.sigstore.dev:443
@@ -610,6 +611,7 @@ jobs:
     needs: [sbom_and_release, provenance_slsa]
     permissions:
       contents: read
+      id-token: write
     uses: ./.github/workflows/verify.yaml
     with:
       repo: ${{ github.repository }}

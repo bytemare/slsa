@@ -1,4 +1,7 @@
 # SLSA Level 3 Release and Verification Workflows
+[![SLSA 3](https://slsa.dev/images/gh-badge-level3.svg)](https://slsa.dev)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/bytemare/slsa/badge)](https://scorecard.dev/viewer/?uri=github.com/bytemare/slsa)
+
 
 This project provides a set of tools to help software producers build and publish SLSA Level 3-compliant releases, and for consumers to verify them. They also gather reproducibility evidence to ease adoption of the upcoming SLSA Level 4 guidance once that level is formally published.
 - Reusable GitHub Actions Workflows for packaging and verifying releases
@@ -97,6 +100,7 @@ You can use the following snippet in your repo to inform your consumers of the r
 >       emit_vsa: true
 >     permissions:
 >       contents: read
+>       id-token: write
 > ```
 
 ---
@@ -170,6 +174,9 @@ jobs:
       mode: full,reproduce   # run multiple modes sequentially
       emit_vsa: true         # optional – uploads a signed verification summary (requires full)
       verifier_id: <https://example.com/trusted-verifier> # optional – URI to identify the verifier in the VSA
+    permissions:
+      contents: read
+      id-token: write
 ```
 
 For interactive runs, trigger `.github/workflows/wf-verify.yaml`. It uses same reusable verifier with sensible defaults.
