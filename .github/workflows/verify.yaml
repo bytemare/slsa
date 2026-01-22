@@ -105,11 +105,6 @@ jobs:
             tuf-repo.github.com:443
             uploads.github.com:443
 
-      - name: Checkout verifier repo
-        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
-        with:
-          fetch-depth: 0
-
       - name: Resolve workflow source
         id: workflow_source
         env:
@@ -203,7 +198,8 @@ jobs:
       - name: Run verification modes
         env:
           COSIGN_EXPERIMENTAL: 1
-          GH_TOKEN: ${{ github.token }}
+          GHA_GITHUB_TOKEN: ${{ github.token }}
+          GHA_CALLER_REPO: ${{ github.repository }}
           GHA_MODES: ${{ steps.setup.outputs.modes }}
           GHA_EMIT_VSA: ${{ inputs.emit_vsa }}
           GHA_VERIFIER_ID: ${{ inputs.verifier_id }}
@@ -214,6 +210,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          
+          if [[ "${GHA_INPUT_REPO}" == "${GHA_CALLER_REPO}" ]]; then
+            export GH_TOKEN="${GHA_GITHUB_TOKEN}"
+          else
+            unset GH_TOKEN GITHUB_TOKEN
+          fi
 
           IFS=',' read -ra modes <<< "${GHA_MODES}"
           emit_vsa="${GHA_EMIT_VSA}"
