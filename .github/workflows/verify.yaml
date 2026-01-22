@@ -99,6 +99,8 @@ jobs:
             release-assets.githubusercontent.com:443
             storage.googleapis.com:443
             sum.golang.org:443
+            tuf-repo-cdn.sigstore.dev:443
+            tuf-repo.github.com:443
             uploads.github.com:443
 
       - name: Checkout verifier repo
