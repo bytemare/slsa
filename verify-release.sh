@@ -768,10 +768,11 @@ run_repro_check() {
     gh release download "$TAG" --repo "$REPO" -p "subjects.sha256" --output "$subjects_tmp"
     gh release download "$TAG" --repo "$REPO" -p "build.env" --output "$build_env_tmp" || true
 
-    local artifact_filename expected_digest builder_from_env
+    local artifact_filename expected_digest builder_from_env script_sha_expected
     artifact_filename=$(awk 'NR==1 {print $2}' "$subjects_tmp")
     expected_digest=$(awk 'NR==1 {print $1}' "$subjects_tmp")
     builder_from_env=$(awk -F= '/^SLSA_BUILDER_IMAGE=/ {print $2}' "$build_env_tmp" | tail -n1)
+    script_sha_expected=$(awk -F= '/^PACKAGING_SCRIPT_SHA256=/ {print $2}' "$build_env_tmp" | tail -n1)
 
     rm -f "$subjects_tmp" "$build_env_tmp"
 
@@ -784,7 +785,7 @@ run_repro_check() {
         builder_image="$builder_from_env"
     fi
 
-    if ! docker run --rm -i "$builder_image" /bin/bash -se <<'EOS' "$REPO" "$TAG" "$artifact_filename" "$expected_digest"; then
+    if ! docker run --rm -i "$builder_image" /bin/bash -se <<'EOS' "$REPO" "$TAG" "$artifact_filename" "$expected_digest" "$script_sha_expected"; then
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -792,6 +793,7 @@ REPO="$1"
 TAG="$2"
 ARTIFACT_NAME="$3"
 EXPECTED_DIGEST="$4"
+EXPECTED_SCRIPT_SHA="${5:-}"
 
 step() { printf "
 --- %s ---
@@ -854,7 +856,24 @@ export LC_ALL=C LANG=C TZ=UTC
 umask 022
 
 set +e
-bash scripts/package-source.sh >/tmp/packaging.log 2>&1
+PACKAGING_SCRIPT=""
+SCRIPT_URL="https://github.com/${REPO}/releases/download/${TAG}/package-source.sh"
+if curl -sSLo package-source.sh "$SCRIPT_URL"; then
+    chmod +x package-source.sh
+    PACKAGING_SCRIPT="./package-source.sh"
+elif [[ -f scripts/package-source.sh ]]; then
+    PACKAGING_SCRIPT="scripts/package-source.sh"
+else
+    fail "Packaging script not found (expected release asset package-source.sh)"
+fi
+if [[ -n "$EXPECTED_SCRIPT_SHA" && "$EXPECTED_SCRIPT_SHA" != "unknown" ]]; then
+    script_digest=$(sha256sum "$PACKAGING_SCRIPT" | awk '{print $1}')
+    if [[ "$script_digest" != "$EXPECTED_SCRIPT_SHA" ]]; then
+        fail "Packaging script digest mismatch (expected $EXPECTED_SCRIPT_SHA, got $script_digest)"
+    fi
+fi
+
+bash "$PACKAGING_SCRIPT" >/tmp/packaging.log 2>&1
 status=$?
 set -e
 if [[ $status -ne 0 ]]; then

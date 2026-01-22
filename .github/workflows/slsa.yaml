@@ -429,9 +429,85 @@ jobs:
             slsa-workflow/scripts/package-source.sh
             package/verification.json
 
-      - name: Install verification tools
-        if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
+      - name: Upload artifacts (PR dry run)
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@2848b2cda0e5190984587ec6bb1f36730ca78d50
+        with:
+          name: dryrun-${{ needs.package_source.outputs.artifact_filename }}
+          if-no-files-found: warn
+          path: |
+            ${{ steps.paths.outputs.artifact_path }}
+            sbom.cdx.json
+            package/subjects.sha256
+            package/checksums.txt
+            package/manifest.files.sha256
+            package/commit.metadata
+            package/build.env
+            slsa-workflow/scripts/package-source.sh
+            package/verification.json
+
+  verify_release_vsa:
+    name: Verify release (full + reproduce) & emit VSA
+    if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
+    needs: [sbom_and_release, provenance_slsa]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@92c522aaa6f53af082553dedc1596c80b71aba33
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            uploads.github.com:443
+            github-releases.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            pipelines.actions.githubusercontent.com:443
+            artifactcache.actions.githubusercontent.com:443
+            fulcio.sigstore.dev:443
+            rekor.sigstore.dev:443
+            tuf-repo-cdn.sigstore.dev:443
+            ctfe.sigstore.dev:443
+            oauth2.sigstore.dev:443
+            auth.docker.io:443
+            registry-1.docker.io:443
+            proxy.golang.org:443
+            sum.golang.org:443
+            storage.googleapis.com:443
+
+      - name: Resolve workflow source
+        id: workflow_source
         env:
+          WORKFLOW_REPO_INPUT: ${{ inputs.workflow_repo }}
+          WORKFLOW_REF_INPUT: ${{ inputs.workflow_ref }}
+        run: |
+          set -euo pipefail
+          repo="${WORKFLOW_REPO_INPUT:-bytemare/slsa}"
+          ref="${WORKFLOW_REF_INPUT}"
+          if [[ -z "$ref" ]]; then
+            echo "Missing required input: workflow_ref (set to the same ref as uses: ...@<ref>)" >&2
+            exit 1
+          fi
+          echo "repo=${repo}" >> "$GITHUB_OUTPUT"
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout workflow repo
+        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
+        with:
+          repository: ${{ steps.workflow_source.outputs.repo }}
+          ref: ${{ steps.workflow_source.outputs.ref }}
+          path: slsa-workflow
+          fetch-depth: 1
+
+      - name: Install verification tools
+        env:
+          COSIGN_VERSION: ${{ inputs.cosign_version }}
+          COSIGN_SHA256: ${{ inputs.cosign_sha256 }}
           GH_VERSION: ${{ inputs.gh_version }}
           GH_SHA256: ${{ inputs.gh_sha256 }}
           JQ_VERSION: ${{ inputs.jq_version }}
@@ -439,6 +515,10 @@ jobs:
           SLSA_VERIFIER_VERSION: ${{ inputs.slsa_verifier_version }}
         run: |
           set -euo pipefail
+          curl -sSfL --proto '=https' --proto-redir '=https' --max-redirs 1 \
+            -o cosign "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
+          echo "${COSIGN_SHA256}  cosign" | sha256sum -c -
+          install -m 0755 cosign /usr/local/bin/cosign
           curl -sSfL --proto '=https' --proto-redir '=https' --max-redirs 1 \
             -o gh.tgz "https://github.com/cli/cli/releases/download/${GH_VERSION}/gh_${GH_VERSION#v}_linux_amd64.tar.gz"
           echo "${GH_SHA256}  gh.tgz" | sha256sum -c -
@@ -451,8 +531,20 @@ jobs:
           go install github.com/slsa-framework/slsa-verifier/v2/cli/slsa-verifier@"${SLSA_VERIFIER_VERSION}"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
-      - name: Verify release & emit VSA
-        if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
+      - name: Verify release (reproduce)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          WORKFLOW_REPO="${{ steps.workflow_source.outputs.repo }}"
+          ./slsa-workflow/verify-release.sh \
+            --repo "${GITHUB_REPOSITORY}" \
+            --tag "${TAG}" \
+            --mode reproduce \
+            --signer-repo "${WORKFLOW_REPO}"
+
+      - name: Verify release & emit VSA (full)
         env:
           COSIGN_EXPERIMENTAL: 1
           GH_TOKEN: ${{ github.token }}
@@ -478,7 +570,6 @@ jobs:
             --resource-uri "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
 
       - name: Cosign sign VSA
-        if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
         env:
           COSIGN_EXPERIMENTAL: 1
         run: |
@@ -486,7 +577,6 @@ jobs:
           cosign sign-blob --yes --bundle verification-summary.attestation.json.bundle verification-summary.attestation.json
 
       - name: Attach VSA assets to release
-        if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -498,7 +588,6 @@ jobs:
             --clobber
 
       - name: Verify uploaded VSA
-        if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
         env:
           COSIGN_EXPERIMENTAL: 1
           GH_TOKEN: ${{ github.token }}
@@ -515,23 +604,20 @@ jobs:
           echo "VSA verification failed after retries" >&2
           exit 1
 
-      - name: Upload artifacts (PR dry run)
-        if: ${{ inputs.dry_run }}
-        uses: actions/upload-artifact@2848b2cda0e5190984587ec6bb1f36730ca78d50
-        with:
-          name: dryrun-${{ needs.package_source.outputs.artifact_filename }}
-          if-no-files-found: warn
-          path: |
-            ${{ steps.paths.outputs.artifact_path }}
-            sbom.cdx.json
-            package/subjects.sha256
-            package/checksums.txt
-            package/manifest.files.sha256
-            package/commit.metadata
-            package/build.env
-            slsa-workflow/scripts/package-source.sh
-            package/verification.json
-
+  verify_release_workflow:
+    name: Verify release (reusable workflow)
+    if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
+    needs: [sbom_and_release, provenance_slsa]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/verify.yaml
+    with:
+      repo: ${{ github.repository }}
+      tag: ${{ github.ref_name }}
+      mode: full,reproduce
+      emit_vsa: false
+      workflow_repo: ${{ inputs.workflow_repo }}
+      workflow_ref: ${{ inputs.workflow_ref }}
   rebuild_verify:
     # Purpose: independently re-run packaging to assert determinism (SLSA Level 4).
     name: Rebuild & Verify Determinism
