@@ -80,6 +80,16 @@ verify_ok() {
     return 0
 }
 
+verify_skip() {
+    local reason="${1:-""}"
+    echo -e " ${YELLOW}!${NC}"
+    if [[ -n "$reason" ]]; then
+        echo -e "  ${YELLOW}Skip: $reason${NC}" >&2
+    fi
+
+    return 0
+}
+
 verify_fail() {
     local error="${1:-""}"
     echo -e " ${RED}✗${NC}"
@@ -272,15 +282,26 @@ sha256_of() {
     sha256sum -- "$file" | awk '{print $1}'
 }
 
+tokenless_actions() {
+    [[ "${GITHUB_ACTIONS:-}" == "true" && -z "${GH_TOKEN:-}" ]]
+}
+
 # Check for required tools
 check_tools() {
     local missing_tools=()
-    local required_tools=("gh" "jq" "openssl" "cosign")
+    local required_tools=()
 
     if [[ "$MODE" == "reproduce" ]]; then
-        required_tools=("docker" "gh")
-    elif [[ "$MODE" == "full" ]]; then
-        required_tools+=("slsa-verifier")
+        required_tools=("docker" "curl")
+    else
+        required_tools=("jq" "openssl" "cosign" "curl")
+        if [[ "$MODE" == "full" ]]; then
+            required_tools+=("slsa-verifier")
+        fi
+    fi
+
+    if ! tokenless_actions; then
+        required_tools+=("gh")
     fi
 
     if ! command -v sha256sum &> /dev/null; then
@@ -297,6 +318,55 @@ check_tools() {
         echo -e "${RED}Error: Missing required tools: ${missing_tools[*]}${NC}" >&2
         exit $EXIT_MISSING_TOOL
     fi
+
+    return 0
+}
+
+download_release_file() {
+    local name="$1"
+    local output="$2"
+
+    if ! tokenless_actions; then
+        if gh release download "$TAG" --repo "$REPO" -p "$name" --output "$output"; then
+            return 0
+        fi
+    fi
+
+    local base_url="${GITHUB_SERVER_URL:-https://github.com}"
+    local url="${base_url}/${REPO}/releases/download/${TAG}/${name}"
+    if curl -fsSL -o "$output" "$url"; then
+        return 0
+    fi
+
+    return 1
+}
+
+download_release_pattern() {
+    local pattern="$1"
+
+    if ! tokenless_actions; then
+        gh release download "$TAG" --repo "$REPO" -p "$pattern" || true
+        return 0
+    fi
+
+    local api_url="${GITHUB_API_URL:-https://api.github.com}/repos/${REPO}/releases/tags/${TAG}"
+    local assets
+    if ! assets=$(curl -fsSL -H "Accept: application/vnd.github+json" "$api_url"); then
+        return 0
+    fi
+
+    local assets_list
+    if ! assets_list=$(jq -r '.assets? // [] | .[] | "\(.name)\t\(.browser_download_url)"' <<< "$assets"); then
+        return 0
+    fi
+
+    while IFS=$'\t' read -r name url; do
+        if [[ "$name" == $pattern ]]; then
+            if ! curl -fsSL -L -o "$name" "$url"; then
+                continue
+            fi
+        fi
+    done <<< "$assets_list"
 
     return 0
 }
@@ -360,7 +430,7 @@ download_artifacts() {
     verify_step "Downloading release artifacts"
 
     for pattern in "${patterns[@]}"; do
-        gh release download "$TAG" --repo "$REPO" -p "$pattern" || true
+        download_release_pattern "$pattern"
     done
 
     if [[ "$MODE" == "vsa" ]]; then
@@ -468,6 +538,10 @@ verify_signatures() {
 
 verify_attestations() {
     verify_step "Verifying GitHub attestations"
+    if tokenless_actions; then
+        verify_skip "GH_TOKEN not available in GitHub Actions (set a token to verify attestations)"
+        return 0
+    fi
     local tarball
     tarball=$(find . -maxdepth 1 -name "*.tar.gz" -type f -print -quit)
     local -a args
@@ -765,8 +839,11 @@ run_repro_check() {
 
     # Pull the published subjects + build.env so we can reuse the exact builder image
     # and artifact digest captured during packaging.
-    gh release download "$TAG" --repo "$REPO" -p "subjects.sha256" --output "$subjects_tmp"
-    gh release download "$TAG" --repo "$REPO" -p "build.env" --output "$build_env_tmp" || true
+    if ! download_release_file "subjects.sha256" "$subjects_tmp"; then
+        echo -e "${RED}Failed to download subjects.sha256${NC}" >&2
+        return 1
+    fi
+    download_release_file "build.env" "$build_env_tmp" || true
 
     local artifact_filename expected_digest builder_from_env script_sha_expected
     artifact_filename=$(awk 'NR==1 {print $2}' "$subjects_tmp")

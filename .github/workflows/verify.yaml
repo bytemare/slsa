@@ -198,7 +198,7 @@ jobs:
       - name: Run verification modes
         env:
           COSIGN_EXPERIMENTAL: 1
-          GHA_GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
           GHA_CALLER_REPO: ${{ github.repository }}
           GHA_MODES: ${{ steps.setup.outputs.modes }}
           GHA_EMIT_VSA: ${{ inputs.emit_vsa }}
@@ -210,11 +210,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          
-          if [[ "${GHA_INPUT_REPO}" == "${GHA_CALLER_REPO}" ]]; then
-            export GH_TOKEN="${GHA_GITHUB_TOKEN}"
-          else
-            unset GH_TOKEN GITHUB_TOKEN
+
+          if [[ "${GHA_INPUT_REPO}" != "${GHA_CALLER_REPO}" ]]; then
+            echo "Cross-repo verification is not supported in this workflow. Run it from the target repo or use the `verify-release.sh` script directly." >&2
+            exit 1
           fi
 
           IFS=',' read -ra modes <<< "${GHA_MODES}"
