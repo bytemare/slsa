@@ -26,62 +26,12 @@ on:
         description: 'Emit VSA during verification (true/false)'
         required: false
         default: 'false'
-  pull_request:
-    paths:
-      - .github/workflows/verify.yaml
-      - .github/workflows/wf-verify.yaml
-      - .github/workflows/slsa.yaml
-      - verify-release.sh
 
 permissions: {}
 
-env:
-  PR_VERIFY_TAG: v0.0.12
-
 jobs:
-  resolve_pr_tag:
-    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    outputs:
-      tag: ${{ steps.resolve.outputs.tag }}
-    steps:
-      - name: Resolve latest release tag
-        id: resolve
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_VERIFY_TAG: ${{ env.PR_VERIFY_TAG }}
-        run: |
-          set -euo pipefail
-          tag="${PR_VERIFY_TAG:-}"
-          if [[ -z "$tag" || "$tag" == "latest" ]]; then
-            tag=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name // empty' || true)
-          fi
-          if [[ -z "$tag" ]]; then
-            echo "No releases found; skipping verification." >&2
-            echo "tag=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-
-  pr_verification:
-    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && needs.resolve_pr_tag.outputs.tag != '' }}
-    needs: resolve_pr_tag
-    permissions:
-      contents: read
-      id-token: write
-    uses: ./.github/workflows/verify.yaml
-    with:
-      repo: ${{ github.repository }}
-      tag: ${{ needs.resolve_pr_tag.outputs.tag }}
-      mode: full,reproduce
-      emit_vsa: true
-      verifier_id: https://github.com/bytemare/slsa/.github/workflows/verify.yaml
-      workflow_ref: ${{ github.event.pull_request.head.sha }}
-
   quick_verification:
-    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'quick' }}
+    if: ${{ github.event.inputs.mode == 'quick' }}
     permissions:
       contents: read
       id-token: write
@@ -93,7 +43,7 @@ jobs:
       workflow_ref: ${{ github.sha }}
 
   full_verification:
-    if: ${{ github.event_name == 'workflow_dispatch' && (contains(github.event.inputs.mode, 'full') || !github.event.inputs.mode) }}
+    if: ${{ contains(github.event.inputs.mode, 'full') || !github.event.inputs.mode }}
     permissions:
       contents: read
       id-token: write
@@ -107,7 +57,7 @@ jobs:
       workflow_ref: ${{ github.sha }}
 
   reproduce_verification:
-    if: ${{ github.event_name == 'workflow_dispatch' && contains(github.event.inputs.mode, 'reproduce') }}
+    if: contains(github.event.inputs.mode, 'reproduce')
     permissions:
       contents: read
       id-token: write
@@ -119,7 +69,7 @@ jobs:
       workflow_ref: ${{ github.sha }}
 
   vsa_only:
-    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'vsa' }}
+    if: ${{ github.event.inputs.mode == 'vsa' }}
     permissions:
       contents: read
       id-token: write
