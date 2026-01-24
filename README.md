@@ -1,6 +1,7 @@
 # SLSA Level 3 Release and Verification Workflows
 [![SLSA 3](https://slsa.dev/images/gh-badge-level3.svg)](https://slsa.dev)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/bytemare/slsa/badge)](https://scorecard.dev/viewer/?uri=github.com/bytemare/slsa)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/11820/badge)](https://www.bestpractices.dev/projects/11820)
 
 
 This project provides a set of tools to help software producers build and publish SLSA Level 3-compliant releases, and for consumers to verify them. They also gather reproducibility evidence to ease adoption of the upcoming SLSA Level 4 guidance once that level is formally published.
