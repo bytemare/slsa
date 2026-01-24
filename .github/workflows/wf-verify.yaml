@@ -15,9 +15,6 @@ name: Verify SLSA Compliance
 on:
   workflow_dispatch:
     inputs:
-      repo:
-        description: 'Repository to verify (default: this repo)'
-        required: false
       tag:
         description: 'Release tag to verify'
         required: true
@@ -40,7 +37,7 @@ jobs:
       id-token: write
     uses: ./.github/workflows/verify.yaml
     with:
-      repo: ${{ github.event.inputs.repo || github.repository }}
+      repo: ${{ github.repository }}
       tag: ${{ github.event.inputs.tag }}
       mode: quick
       workflow_ref: ${{ github.sha }}
@@ -52,7 +49,7 @@ jobs:
       id-token: write
     uses: ./.github/workflows/verify.yaml
     with:
-      repo: ${{ github.event.inputs.repo || github.repository }}
+      repo: ${{ github.repository }}
       tag: ${{ github.event.inputs.tag }}
       mode: ${{ github.event.inputs.mode || 'full' }}
       emit_vsa: ${{ github.event.inputs.emit_vsa == 'true' }}
@@ -66,7 +63,7 @@ jobs:
       id-token: write
     uses: ./.github/workflows/verify.yaml
     with:
-      repo: ${{ github.event.inputs.repo || github.repository }}
+      repo: ${{ github.repository }}
       tag: ${{ github.event.inputs.tag }}
       mode: reproduce
       workflow_ref: ${{ github.sha }}
@@ -78,7 +75,7 @@ jobs:
       id-token: write
     uses: ./.github/workflows/verify.yaml
     with:
-      repo: ${{ github.event.inputs.repo || github.repository }}
+      repo: ${{ github.repository }}
       tag: ${{ github.event.inputs.tag }}
       mode: vsa
       workflow_ref: ${{ github.sha }}
