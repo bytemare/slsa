@@ -212,7 +212,7 @@ jobs:
           set -euo pipefail
 
           if [[ "${GHA_INPUT_REPO}" != "${GHA_CALLER_REPO}" ]]; then
-            echo "Cross-repo verification is not supported in this workflow. Run it from the target repo or use the `verify-release.sh` script directly." >&2
+            echo "Cross-repo verification is not supported in this workflow. Run it from the target repo or use the 'verify-release.sh' script directly." >&2
             exit 1
           fi
 

@@ -65,6 +65,7 @@ SLSA_VERSION="1.1"
 TIME_VERIFIED_OVERRIDE=""
 SIGNER_REPO=""
 SIGNER_WORKFLOW=""
+SIGNER_REPO_DEFAULT="bytemare/slsa"
 
 # Print a verification step
 verify_step() {
@@ -125,6 +126,7 @@ Optional Arguments:
   --policy-file PATH   File used to compute the policy digest (defaults to this script)
   --verified-level L   Append a verified SLSA level (repeatable, default: SLSA_BUILD_LEVEL_3)
   --signer-repo REPO   Reusable workflow repo that signed attestations (owner/repo)
+                       (default: bytemare/slsa when signer-workflow is unset)
   --signer-workflow W  Reusable workflow file that signed attestations (owner/repo/path)
   --resource-uri URI   Resource URI describing the artifact under verification
   --time-verified TS   Override the VSA timeVerified field (RFC3339, defaults to current time)
@@ -262,6 +264,10 @@ parse_args() {
         fi
     fi
 
+    if [[ -z "$SIGNER_REPO" && -z "$SIGNER_WORKFLOW" ]]; then
+        SIGNER_REPO="$SIGNER_REPO_DEFAULT"
+    fi
+
     if [[ -z "$POLICY_FILE" ]]; then
         POLICY_FILE="$0"
     fi
@@ -294,7 +300,7 @@ check_tools() {
     if [[ "$MODE" == "reproduce" ]]; then
         required_tools=("docker" "curl")
     else
-        required_tools=("jq" "openssl" "cosign" "curl")
+        required_tools=("jq" "cosign" "curl")
         if [[ "$MODE" == "full" ]]; then
             required_tools+=("slsa-verifier")
         fi
@@ -361,7 +367,7 @@ download_release_pattern() {
     fi
 
     while IFS=$'\t' read -r name url; do
-        if [[ "$name" == $pattern ]]; then
+        if [[ "$name" == "$pattern" ]]; then
             if ! curl -fsSL -L -o "$name" "$url"; then
                 continue
             fi
@@ -558,6 +564,13 @@ verify_attestations() {
     else
         verify_fail "Attestation verification failed"
         echo "$output" >&2
+        if [[ -n "$SIGNER_REPO" && "$SIGNER_REPO" == "$SIGNER_REPO_DEFAULT" ]]; then
+            verify_fail "This run assumed the signer repo is '${SIGNER_REPO_DEFAULT}'. If the attestation was signed by another workflow repo (for example a fork or a repo that reused that workflow), re-run with --signer-repo <owner>/<repo> and optionally --signer-workflow <owner>/<repo>/.github/workflows/slsa.yaml@<ref>." >&2
+        elif [[ -n "$SIGNER_REPO" ]]; then
+            verify_fail "--signer-repo tells the verifier which workflow repo signed the attestation, and it seems the provided value is not correct. Provide the correct <owner>/<repo> GitHub workflow that signed the attestation. You can try to re-run with --signer-repo ${SIGNER_REPO_DEFAULT} (or your fork) and optionally --signer-workflow <owner>/<repo>/.github/workflows/slsa.yaml@<ref>." >&2
+        else
+            verify_fail "Provide --signer-repo ${SIGNER_REPO_DEFAULT} (or your fork) and optionally --signer-workflow <owner>/<repo>/.github/workflows/slsa.yaml@<ref>." >&2
+        fi
         return 1
     fi
 
