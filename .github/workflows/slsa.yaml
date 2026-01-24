@@ -153,7 +153,7 @@ jobs:
       artifact_path: ${{ steps.package.outputs.artifact_path }}
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@92c522aaa6f53af082553dedc1596c80b71aba33
+        uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76
         with:
           disable-sudo: true
           egress-policy: block
@@ -166,7 +166,7 @@ jobs:
             artifactcache.actions.githubusercontent.com:443
 
       - name: Checkout repo
-        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           fetch-depth: 0
 
@@ -187,7 +187,7 @@ jobs:
           echo "ref=${ref}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout workflow repo
-        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           repository: ${{ steps.workflow_source.outputs.repo }}
           ref: ${{ steps.workflow_source.outputs.ref }}
@@ -207,7 +207,7 @@ jobs:
           bash slsa-workflow/scripts/package-source.sh
 
       - name: Upload packaging bundle
-        uses: actions/upload-artifact@2848b2cda0e5190984587ec6bb1f36730ca78d50
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: package-${{ steps.package.outputs.artifact_filename }}
           retention-days: 7
@@ -237,7 +237,7 @@ jobs:
       security-events: write
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@92c522aaa6f53af082553dedc1596c80b71aba33
+        uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76
         with:
           disable-sudo: true
           egress-policy: block
@@ -262,7 +262,7 @@ jobs:
             storage.googleapis.com:443
 
       - name: Checkout repo
-        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           fetch-depth: 0
 
@@ -283,7 +283,7 @@ jobs:
           echo "ref=${ref}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout workflow repo
-        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           repository: ${{ steps.workflow_source.outputs.repo }}
           ref: ${{ steps.workflow_source.outputs.ref }}
@@ -315,7 +315,7 @@ jobs:
           echo "lang=$lang" >> "$GITHUB_OUTPUT"
 
       - name: Download packaging bundle
-        uses: actions/download-artifact@4a24838f3d5601fd639834081e118c2995d51e1c
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: package-${{ needs.package_source.outputs.artifact_filename }}
           path: package
@@ -348,7 +348,7 @@ jobs:
 
       - name: Setup Node (for cdxgen)
         if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
-        uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238
         with:
           node-version: ${{ inputs.node_version }}
 
@@ -371,14 +371,14 @@ jobs:
 
       - name: Attest SBOM (bind SBOM to tarball digest)
         if: ${{ !inputs.dry_run }}
-        uses: actions/attest-sbom@580d4aff2154158e1f746a6ad674799329ccfad1
+        uses: actions/attest-sbom@6cf30ca381902d015a1ba331977ad71315dffb36
         with:
           subject-checksums: ${{ steps.paths.outputs.subjects_path }}
           sbom-path: sbom.cdx.json
 
       - name: Attest build provenance (GitHub native)
         if: ${{ !inputs.dry_run }}
-        uses: actions/attest-build-provenance@ba965ac88abfc6fa49344893ed19e5bf479a07d6
+        uses: actions/attest-build-provenance@6865550d0380db508fc599a58cc87c50c0bba5c5
         with:
           subject-path: ${{ steps.paths.outputs.artifact_path }}
 
@@ -411,7 +411,7 @@ jobs:
 
       - name: Create/Update GitHub Release
         if: ${{ !inputs.dry_run && inputs.create_release }}
-        uses: softprops/action-gh-release@5434409c2b6457c050f109d68b2547fcbf1db07b
+        uses: softprops/action-gh-release@78237c54eb15310cb292a15480c4be010be47aeb
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
@@ -431,7 +431,7 @@ jobs:
 
       - name: Upload artifacts (PR dry run)
         if: ${{ inputs.dry_run }}
-        uses: actions/upload-artifact@2848b2cda0e5190984587ec6bb1f36730ca78d50
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: dryrun-${{ needs.package_source.outputs.artifact_filename }}
           if-no-files-found: warn
@@ -456,7 +456,7 @@ jobs:
       id-token: write
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@92c522aaa6f53af082553dedc1596c80b71aba33
+        uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76
         with:
           disable-sudo: true
           egress-policy: block
@@ -499,7 +499,7 @@ jobs:
           echo "ref=${ref}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout workflow repo
-        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           repository: ${{ steps.workflow_source.outputs.repo }}
           ref: ${{ steps.workflow_source.outputs.ref }}
@@ -634,7 +634,7 @@ jobs:
       contents: read
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@92c522aaa6f53af082553dedc1596c80b71aba33
+        uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76
         with:
           disable-sudo: true
           egress-policy: block
@@ -645,7 +645,7 @@ jobs:
             pipelines.actions.githubusercontent.com:443
 
       - name: Checkout repo (fresh workspace)
-        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           fetch-depth: 0
 
@@ -666,7 +666,7 @@ jobs:
           echo "ref=${ref}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout workflow repo
-        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           repository: ${{ steps.workflow_source.outputs.repo }}
           ref: ${{ steps.workflow_source.outputs.ref }}
