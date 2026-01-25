@@ -26,30 +26,10 @@ on:
         description: 'Emit VSA during verification (true/false)'
         required: false
         default: 'false'
-  pull_request:
-    paths:
-      - .github/workflows/verify.yaml
-      - .github/workflows/wf-verify.yaml
-      - .github/workflows/slsa.yaml
-      - verify-release.sh
 
 permissions: {}
 
 jobs:
-  pr_verification:
-    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
-    permissions:
-      contents: read
-      id-token: write
-    uses: ./.github/workflows/verify.yaml
-    with:
-      repo: ${{ github.repository }}
-      tag: v0.0.12
-      mode: full,reproduce
-      emit_vsa: true
-      verifier_id: https://github.com/bytemare/slsa/.github/workflows/verify.yaml
-      workflow_ref: ${{ github.event.pull_request.head.sha }}
-
   quick_verification:
     if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'quick' }}
     permissions:
