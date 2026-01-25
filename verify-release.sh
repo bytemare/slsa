@@ -43,7 +43,8 @@
 # Script Metadata
 # ===========================================================================
 readonly SCRIPT_VERSION="1.0.0"
-readonly SCRIPT_NAME="$(basename "$0")"
+SCRIPT_NAME="$(basename "$0")"
+readonly SCRIPT_NAME
 
 # ===========================================================================
 # Shell Options
@@ -87,6 +88,7 @@ readonly EXIT_DOWNLOAD_FAILED=4
 # ===========================================================================
 # Cleanup Management
 # ===========================================================================
+# shellcheck disable=SC2329  # Function invoked via trap
 cleanup() {
   if [[ -n "${WORK_DIR:-}" ]] && [[ -d "$WORK_DIR" ]]; then
     rm -rf "$WORK_DIR"

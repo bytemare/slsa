@@ -50,7 +50,8 @@
 # Script Metadata
 # ===========================================================================
 readonly SCRIPT_VERSION="1.0.0"
-readonly SCRIPT_NAME="$(basename "$0")"
+SCRIPT_NAME="$(basename "$0")"
+readonly SCRIPT_NAME
 
 # ===========================================================================
 # Exit Codes
@@ -186,7 +187,8 @@ done
 # ===========================================================================
 # Environment Setup
 # ===========================================================================
-readonly ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly ROOT_DIR
 readonly CONFIG_FILE="${ROOT_DIR}/.github/tool-versions.json"
 
 # Verify config file exists
@@ -268,7 +270,8 @@ if ! curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
   "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"; then
   fail "$EXIT_DOWNLOAD_ERROR" "Failed to download cosign ${COSIGN_VERSION}"
 fi
-readonly COSIGN_SHA256="$(sha256_of "${tmpdir}/cosign")"
+COSIGN_SHA256="$(sha256_of "${tmpdir}/cosign")"
+readonly COSIGN_SHA256
 
 log "Downloading gh ${GH_VERSION}..."
 if ! curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
@@ -277,7 +280,8 @@ if ! curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
   "https://github.com/cli/cli/releases/download/${GH_VERSION}/gh_${GH_VERSION#v}_linux_amd64.tar.gz"; then
   fail "$EXIT_DOWNLOAD_ERROR" "Failed to download gh ${GH_VERSION}"
 fi
-readonly GH_SHA256="$(sha256_of "${tmpdir}/gh.tgz")"
+GH_SHA256="$(sha256_of "${tmpdir}/gh.tgz")"
+readonly GH_SHA256
 
 log "Downloading jq ${JQ_VERSION}..."
 if ! curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
@@ -286,7 +290,8 @@ if ! curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
   "https://github.com/jqlang/jq/releases/download/${JQ_VERSION}/jq-linux-amd64"; then
   fail "$EXIT_DOWNLOAD_ERROR" "Failed to download jq ${JQ_VERSION}"
 fi
-readonly JQ_SHA256="$(sha256_of "${tmpdir}/jq")"
+JQ_SHA256="$(sha256_of "${tmpdir}/jq")"
+readonly JQ_SHA256
 
 # ===========================================================================
 # Update Configuration

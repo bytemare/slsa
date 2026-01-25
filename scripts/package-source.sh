@@ -93,6 +93,7 @@ if [[ -t 2 ]] && [[ -z "${NO_COLOR:-}" ]] && [[ "${TERM:-dumb}" != "dumb" ]]; th
   readonly BLUE=$'\033[0;34m'
   readonly RESET=$'\033[0m'
 else
+  # shellcheck disable=SC2034  # Colors defined for consistency, used conditionally
   readonly RED='' GREEN='' YELLOW='' BLUE='' RESET=''
 fi
 
@@ -101,6 +102,7 @@ fi
 # -----------------------------------------------------------------------------
 declare -a CLEANUP_FILES=()
 
+# shellcheck disable=SC2329  # Function invoked via trap
 cleanup() {
   local file
   for file in "${CLEANUP_FILES[@]}"; do
@@ -251,15 +253,15 @@ fi
 # Use commit timestamp to seed deterministic tooling.
 SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_SHA")"
 export SOURCE_DATE_EPOCH
-# Sanitize naming components.
-sanitize() { local in="$1" out; out="${in//[^A-Za-z0-9._-]/_}"; [ -n "$out" ] || fail "Sanitized empty: $in"; printf '%s\n' "$out"; }
+# Sanitize naming components using the sanitize function defined above.
 REPO_SAFE="$(sanitize "${GITHUB_REPOSITORY#*/}")"
 if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
   TAG_SAFE="$(sanitize "${GITHUB_REF_NAME//\//_}")"
 else
   TAG_SAFE="$(sanitize "${GITHUB_REF_NAME//\//_}")-dryrun-${GITHUB_RUN_NUMBER}"
 fi
-readonly BASENAME="$(echo "${REPO_SAFE}-${TAG_SAFE}" | tr -dc '[:print:]')"
+BASENAME="$(echo "${REPO_SAFE}-${TAG_SAFE}" | tr -dc '[:print:]')"
+readonly BASENAME
 readonly OUTDIR="dist"
 mkdir -p "$OUTDIR"
 readonly ARCHIVE_PATH="${OUTDIR}/${BASENAME}.tar.gz"
@@ -326,10 +328,13 @@ echo '::endgroup::'
 
 echo '::group::Script & environment snapshot'
 # Script integrity (hash stored in build.env, no separate file)
-readonly SCRIPT_PATH="$(realpath "$0")"
-readonly SCRIPT_DIGEST="$(sha256_of "$SCRIPT_PATH")"
+SCRIPT_PATH="$(realpath "$0")"
+readonly SCRIPT_PATH
+SCRIPT_DIGEST="$(sha256_of "$SCRIPT_PATH")"
+readonly SCRIPT_DIGEST
 # Capture gzip version
-readonly GZIP_VER=$(gzip --version 2>&1 | head -n1 || echo 'unknown')
+GZIP_VER=$(gzip --version 2>&1 | head -n1 || echo 'unknown')
+readonly GZIP_VER
 # Source OS info for runner identification
 if [ -f /etc/os-release ]; then source /etc/os-release; fi
 # Environment summary (no separate .sha256 file)
