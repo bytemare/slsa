@@ -47,7 +47,8 @@ latest_tag() {
     auth_header="-H Authorization: Bearer ${GH_TOKEN}"
   fi
   # shellcheck disable=SC2086
-  curl -sSfL $auth_header -H "Accept: application/vnd.github+json" "$url" | jq -r '.tag_name'
+  curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
+    $auth_header -H "Accept: application/vnd.github+json" "$url" | jq -r '.tag_name'
 }
 
 read_version() {
@@ -79,19 +80,22 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
 echo "Downloading cosign ${COSIGN_VERSION}..."
-curl -sSfL --proto '=https' --proto-redir '=https' --max-redirs 1 \
+curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
+  --proto '=https' --proto-redir '=https' --max-redirs 1 \
   -o "${tmpdir}/cosign" \
   "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
 COSIGN_SHA256="$(sha256_of "${tmpdir}/cosign")"
 
 echo "Downloading gh ${GH_VERSION}..."
-curl -sSfL --proto '=https' --proto-redir '=https' --max-redirs 1 \
+curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
+  --proto '=https' --proto-redir '=https' --max-redirs 1 \
   -o "${tmpdir}/gh.tgz" \
   "https://github.com/cli/cli/releases/download/${GH_VERSION}/gh_${GH_VERSION#v}_linux_amd64.tar.gz"
 GH_SHA256="$(sha256_of "${tmpdir}/gh.tgz")"
 
 echo "Downloading jq ${JQ_VERSION}..."
-curl -sSfL --proto '=https' --proto-redir '=https' --max-redirs 1 \
+curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
+  --proto '=https' --proto-redir '=https' --max-redirs 1 \
   -o "${tmpdir}/jq" \
   "https://github.com/jqlang/jq/releases/download/${JQ_VERSION}/jq-linux-amd64"
 JQ_SHA256="$(sha256_of "${tmpdir}/jq")"

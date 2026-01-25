@@ -256,6 +256,36 @@ fi
 subjects_count=$(wc -l < subjects.sha256 | tr -d ' ')
 echo "PACKAGING SUMMARY: artifact=$(basename "$ARCHIVE_PATH") sha256=$artifact_sha256 extended_metadata=${EXTENDED_METADATA:-false} files=$file_manifest_entries commit=$commit_sha subjects=$subjects_count"
 
+# GitHub Actions Job Summary (rich Markdown in the Actions UI)
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  {
+    echo "## 📦 Packaging Summary"
+    echo ""
+    echo "| Property | Value |"
+    echo "|----------|-------|"
+    echo "| **Artifact** | \`$(basename "$ARCHIVE_PATH")\` |"
+    echo "| **SHA256** | \`${artifact_sha256:0:16}...\` |"
+    echo "| **Commit** | \`${commit_sha:0:12}\` |"
+    echo "| **Tree** | \`${tree_sha:0:12}\` |"
+    echo "| **Files in manifest** | ${file_manifest_entries} |"
+    echo "| **SLSA subjects** | ${subjects_count} |"
+    echo "| **Extended metadata** | ${EXTENDED_METADATA:-false} |"
+    echo "| **Packaging language** | ${PACKAGING_LANGUAGE} |"
+    echo ""
+    echo "### ✅ Reproducibility Self-Check"
+    echo ""
+    echo "Internal rebuild produced **identical digest** — packaging is deterministic."
+    echo ""
+    echo "<details>"
+    echo "<summary>Full SHA256</summary>"
+    echo ""
+    echo "\`\`\`"
+    echo "$artifact_sha256"
+    echo "\`\`\`"
+    echo "</details>"
+  } >> "$GITHUB_STEP_SUMMARY"
+fi
+
 # Surface outputs for GitHub Actions workflow consumption.
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
   {

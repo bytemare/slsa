@@ -145,6 +145,7 @@ jobs:
   load_versions:
     name: Load tool versions
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
     outputs:
@@ -159,6 +160,14 @@ jobs:
       node_version: ${{ steps.resolve.outputs.node_version }}
       builder_image: ${{ steps.resolve.outputs.builder_image }}
     steps:
+      - name: Validate required inputs
+        shell: bash
+        run: |
+          if [[ -z "${{ inputs.workflow_ref }}" ]]; then
+            echo "::error title=Missing Required Input::workflow_ref is required. Set it to the same ref used in uses: ...@<ref>"
+            exit 1
+          fi
+
       - name: Harden Runner
         uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76
         with:
@@ -246,7 +255,7 @@ jobs:
     needs: load_versions
     if: ${{ inputs.dry_run || github.ref_type == 'tag' }}
     runs-on: ubuntu-latest
-    # Fully containerize to ensure hermetic, consistent environment.
+    timeout-minutes: 15
     container:
       image: ${{ needs.load_versions.outputs.builder_image }}
     permissions:
@@ -335,6 +344,7 @@ jobs:
     needs: [load_versions, package_source]
     if: ${{ inputs.dry_run || github.ref_type == 'tag' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     container:
       image: ${{ needs.load_versions.outputs.builder_image }}
     permissions:
@@ -450,7 +460,8 @@ jobs:
           COSIGN_SHA256: ${{ needs.load_versions.outputs.cosign_sha256 }}
         run: |
           set -euo pipefail
-          curl -sSfL --proto '=https' --proto-redir '=https' --max-redirs 1 \
+          curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
+            --proto '=https' --proto-redir '=https' --max-redirs 1 \
             -o cosign "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
           echo "${COSIGN_SHA256}  cosign" | sha256sum -c -
           install -m 0755 cosign /usr/local/bin/cosign
@@ -542,7 +553,7 @@ jobs:
         if: ${{ inputs.dry_run }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: dryrun-${{ needs.package_source.outputs.artifact_filename }}
+          name: dryrun-${{ needs.package_source.outputs.artifact_filename }}-${{ github.run_id }}
           if-no-files-found: warn
           path: |
             ${{ steps.paths.outputs.artifact_path }}
@@ -563,6 +574,7 @@ jobs:
     if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
     needs: [load_versions, sbom_and_release, provenance_slsa]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
       id-token: write
@@ -630,16 +642,19 @@ jobs:
           SLSA_VERIFIER_VERSION: ${{ needs.load_versions.outputs.slsa_verifier_version }}
         run: |
           set -euo pipefail
-          curl -sSfL --proto '=https' --proto-redir '=https' --max-redirs 1 \
+          curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
+            --proto '=https' --proto-redir '=https' --max-redirs 1 \
             -o cosign "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
           echo "${COSIGN_SHA256}  cosign" | sha256sum -c -
           install -m 0755 cosign /usr/local/bin/cosign
-          curl -sSfL --proto '=https' --proto-redir '=https' --max-redirs 1 \
+          curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
+            --proto '=https' --proto-redir '=https' --max-redirs 1 \
             -o gh.tgz "https://github.com/cli/cli/releases/download/${GH_VERSION}/gh_${GH_VERSION#v}_linux_amd64.tar.gz"
           echo "${GH_SHA256}  gh.tgz" | sha256sum -c -
           tar -xzf gh.tgz
           install -m 0755 "gh_${GH_VERSION#v}_linux_amd64/bin/gh" /usr/local/bin/gh
-          curl -sSfL --proto '=https' --proto-redir '=https' --max-redirs 1 \
+          curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
+            --proto '=https' --proto-redir '=https' --max-redirs 1 \
             -o jq "https://github.com/jqlang/jq/releases/download/${JQ_VERSION}/jq-linux-amd64"
           echo "${JQ_SHA256}  jq" | sha256sum -c -
           install -m 0755 jq /usr/local/bin/jq
@@ -743,6 +758,7 @@ jobs:
     if: ${{ github.ref_type == 'tag' && !inputs.dry_run }}
     needs: [load_versions, package_source]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     container:
       # Mirror the hermetic builder so the rebuild check uses identical bits.
       image: ${{ needs.load_versions.outputs.builder_image }}
