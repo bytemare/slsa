@@ -35,9 +35,6 @@ on:
 
 permissions: {}
 
-env:
-  PR_VERIFY_TAG: v0.0.12
-
 jobs:
   pr_verification:
     if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
@@ -47,7 +44,7 @@ jobs:
     uses: ./.github/workflows/verify.yaml
     with:
       repo: ${{ github.repository }}
-      tag: ${{ env.PR_VERIFY_TAG }}
+      tag: v0.0.12
       mode: full,reproduce
       emit_vsa: true
       verifier_id: https://github.com/bytemare/slsa/.github/workflows/verify.yaml
