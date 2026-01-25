@@ -243,23 +243,24 @@ jobs:
           egress-policy: block
           allowed-endpoints: >
             api.github.com:443
+            artifactcache.actions.githubusercontent.com:443
+            ctfe.sigstore.dev:443
+            fulcio.sigstore.dev:443
             github.com:443
             nodejs.org:443
-            objects.githubusercontent.com:443
-            pkg-containers.githubusercontent.com:443
-            registry.npmjs.org:443
-            uploads.github.com:443
-            release-assets.githubusercontent.com:443
-            artifactcache.actions.githubusercontent.com:443
-            pipelines.actions.githubusercontent.com:443
-            fulcio.sigstore.dev:443
-            rekor.sigstore.dev:443
-            tuf-repo-cdn.sigstore.dev:443
-            ctfe.sigstore.dev:443
             oauth2.sigstore.dev:443
+            objects.githubusercontent.com:443
+            pipelines.actions.githubusercontent.com:443
+            pkg-containers.githubusercontent.com:443
             proxy.golang.org:443
+            registry.npmjs.org:443
+            rekor.sigstore.dev:443
+            release-assets.githubusercontent.com:443
             sum.golang.org:443
             storage.googleapis.com:443
+            timestamp.sigstore.dev:443
+            tuf-repo-cdn.sigstore.dev:443
+            uploads.github.com:443
 
       - name: Checkout repo
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98

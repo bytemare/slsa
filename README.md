@@ -25,7 +25,7 @@ It provides:
 
 ## Supported languages
 
-Source packaging works for any repo, and Go modules receive extra metadata (like `go env`) and use the Go-specific SBOM generator.
+Source packaging works for any repo. Go modules receive extra metadata (like `go env`) and use a Go-specific SBOM generator.
 
 ---
 
@@ -83,26 +83,9 @@ You can use the following snippet in your repo to inform your consumers of the r
 > ```shell
 > curl -sSL https://raw.githubusercontent.com/bytemare/slsa/main/verify-release.sh -o verify-release.sh
 > chmod +x verify-release.sh
-> ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode full --signer-repo <workflow-repo>
+> ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode full --signer-repo bytemare/slsa
 > ```
-> Add `--mode reproduce` to rerun the build in a container, or `--mode vsa` to validate just the verification summary.
-> - 🔁 Automated verification with the reusable verifier workflow from [bytemare/slsa](https://github.com/bytemare/slsa) in GitHub Actions:
-> ```yaml
-> permissions: {}
-> 
-> jobs:
->   verify-release:
->     uses: bytemare/slsa/.github/workflows/verify.yaml@<pinned-commit>
->     with:
->       workflow_ref: <pinned-commit>
->       repo: <owner>/<repo>
->       tag: <tag>
->       mode: full,reproduce
->       emit_vsa: true
->     permissions:
->       contents: read
->       id-token: write
-> ```
+> Run again with `--mode reproduce` to build in a container, or `--mode vsa` to validate just the verification summary.
 
 ---
 
@@ -145,7 +128,7 @@ chmod +x verify-release.sh
   independent evidence for future Level 4 expectations.
 
 The script automatically:
-- Checks for required tools (gh, jq, cosign, openssl, sha256sum, git for full mode)
+- Checks for required tools (curl, jq, cosign, sha256sum, gh for attestations, slsa-verifier for full mode, docker for reproduce mode)
 - Downloads all necessary artifacts
 - Verifies checksums and signatures
 - Validates SLSA provenance and SBOM (in full mode)
@@ -170,7 +153,6 @@ jobs:
     uses: bytemare/slsa/.github/workflows/verify.yaml@<pinned-commit>
     with:
       workflow_ref: <pinned-commit>
-      repo: <owner>/<repo>
       tag: <tag>
       mode: full,reproduce   # run multiple modes sequentially
       emit_vsa: true         # optional – uploads a signed verification summary (requires full)
