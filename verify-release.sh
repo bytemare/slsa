@@ -9,6 +9,10 @@
 # https://spdx.org/licenses/MIT.html
 #
 
+###############################################################################
+# verify-release.sh - SLSA Level 3 Release Verification
+###############################################################################
+#
 # This script automates the verification of SLSA Level 3 compliant releases,
 # including checksum verification, signature verification, and a full, containerized
 # reproducibility check using a digest-pinned Go toolchain.
@@ -26,27 +30,76 @@
 #   full      - Complete verification of all release artifacts (checksums, signatures, SBOM, provenance).
 #   reproduce - Full, containerized reproducibility check.
 #
+# Exit Codes:
+#   0 - Success
+#   1 - Missing required tool
+#   2 - Missing or invalid argument
+#   3 - Verification failed
+#   4 - Download failed
+#
+###############################################################################
 
+# ===========================================================================
+# Script Metadata
+# ===========================================================================
+readonly SCRIPT_VERSION="1.0.0"
+readonly SCRIPT_NAME="$(basename "$0")"
+
+# ===========================================================================
+# Shell Options
+# ===========================================================================
 set -euo pipefail
+
+# ===========================================================================
+# Constants
+# ===========================================================================
 
 # Default container image used for rebuild verification (matches CI builder digest).
 # The reproduce mode prefers the value recorded in build.env but falls back to this.
 readonly REPRO_IMAGE_DEFAULT="golang:1.25-bookworm@sha256:42d8e9dea06f23d0bfc908826455213ee7f3ed48c43e287a422064220c501be9"
 
-# Color codes for output
-readonly GREEN='\033[0;32m'
-readonly RED='\033[0;31m'
-readonly YELLOW='\033[1;33m'
-readonly NC='\033[0m'
+# ===========================================================================
+# Color Support (respects NO_COLOR)
+# ===========================================================================
+if [[ -z "${NO_COLOR:-}" ]] && [[ -t 1 ]]; then
+  readonly GREEN=$'\033[0;32m'
+  readonly RED=$'\033[0;31m'
+  readonly YELLOW=$'\033[1;33m'
+  readonly BLUE=$'\033[0;34m'
+  readonly NC=$'\033[0m'
+else
+  readonly GREEN=''
+  readonly RED=''
+  readonly YELLOW=''
+  readonly BLUE=''
+  readonly NC=''
+fi
 
-# Exit codes
+# ===========================================================================
+# Exit Codes
+# ===========================================================================
 readonly EXIT_SUCCESS=0
 readonly EXIT_MISSING_TOOL=1
 readonly EXIT_MISSING_ARG=2
 readonly EXIT_VERIFICATION_FAILED=3
 readonly EXIT_DOWNLOAD_FAILED=4
 
-# Global variables
+# ===========================================================================
+# Cleanup Management
+# ===========================================================================
+cleanup() {
+  if [[ -n "${WORK_DIR:-}" ]] && [[ -d "$WORK_DIR" ]]; then
+    rm -rf "$WORK_DIR"
+  fi
+}
+
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# ===========================================================================
+# Global Variables
+# ===========================================================================
 REPO=""
 TAG=""
 MODE="quick"
@@ -104,15 +157,18 @@ verify_fail() {
 # Usage information
 usage() {
     cat << EOF
-Usage: $0 --repo OWNER/REPO --tag TAG [--mode MODE]
+${BLUE}${SCRIPT_NAME}${NC} v${SCRIPT_VERSION}
 
 Verify SLSA Level 3 compliant release artifacts.
 
-Required Arguments:
+${YELLOW}Usage:${NC}
+  $0 --repo OWNER/REPO --tag TAG [--mode MODE]
+
+${YELLOW}Required Arguments:${NC}
   --repo OWNER/REPO    Repository in format owner/repo (e.g., bytemare/workflows)
   --tag TAG            Release tag to verify (e.g., 0.0.4)
 
-Optional Arguments:
+${YELLOW}Optional Arguments:${NC}
   --mode MODE          Verification mode (default: quick)
                        - quick: Basic checksum and signature verification.
                        - full: Complete verification of all release artifacts.
@@ -131,6 +187,7 @@ Optional Arguments:
   --resource-uri URI   Resource URI describing the artifact under verification
   --time-verified TS   Override the VSA timeVerified field (RFC3339, defaults to current time)
   --slsa-version VER   Predicated SLSA version for the VSA (default: 1.1)
+  -V, --version        Show version information
   --help               Show this help message
 
 Examples:
@@ -211,6 +268,10 @@ parse_args() {
                 ;; 
             --help)
                 usage
+                exit $EXIT_SUCCESS
+                ;;
+            -V|--version)
+                echo "${SCRIPT_NAME} v${SCRIPT_VERSION}"
                 exit $EXIT_SUCCESS
                 ;; 
             *)

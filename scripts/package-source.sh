@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1091
 #
 # SPDX-License-Identifier: MIT
 #
@@ -9,10 +10,12 @@
 # https://spdx.org/licenses/MIT.html
 #
 
-# This is the prod ready script for deterministic source packaging.
+# Deterministic source packaging script for SLSA L3/L4 compliance.
 # Language support can be auto-detected or forced via PACKAGING_LANGUAGE (go|generic|auto).
-
-# Deterministic source packaging script.
+#
+# Usage:
+#   ./package-source.sh [--help]
+#
 # Required env (set automatically by GitHub Actions, or manually for local reproduction):
 #   GITHUB_SHA         Commit SHA to package.
 #   GITHUB_REPOSITORY  owner/repo string.
@@ -22,6 +25,8 @@
 #
 # Optional env:
 #   PACKAGING_LANGUAGE  go|generic|auto (defaults to auto; auto checks for go.mod in commit)
+#   EXTENDED_METADATA   true|false (defaults to false)
+#   SLSA_BUILDER_IMAGE  Container image used for hermetic builds
 #
 # Outputs (written to $GITHUB_OUTPUT for workflow consumption):
 #   artifact_path       Full path to produced .tar.gz
@@ -36,6 +41,13 @@
 #   commit.metadata / .sha256     Core commit descriptors
 #   build.env / .sha256           Toolchain snapshot and script hash
 #   packaging-script.sha256       Integrity hash of this script itself
+#
+# Exit codes:
+#   0   Success
+#   1   General error (missing env, invalid input)
+#   2   Git error (dirty worktree, invalid commit)
+#   3   Archive error (empty archive, missing required files)
+#   4   Reproducibility error (self-check failed)
 #
 # Design decisions (trade-offs):
 #   - gzip -n -9: maximum compression and zeroed metadata (deterministic), slight CPU cost acceptable (single archive).
@@ -56,9 +68,157 @@ set -euo pipefail
 export LC_ALL=C LANG=C TZ=UTC
 umask 022
 
-fail() { echo "ERROR: $*" >&2; exit 1; }
-log()  { echo "[package] $*" >&2; }
-need() { [ -n "${!1:-}" ] || fail "Missing env var: $1"; }
+# -----------------------------------------------------------------------------
+# Exit codes
+# -----------------------------------------------------------------------------
+readonly EXIT_SUCCESS=0
+readonly EXIT_GENERAL_ERROR=1
+readonly EXIT_GIT_ERROR=2
+readonly EXIT_ARCHIVE_ERROR=3
+readonly EXIT_REPRODUCIBILITY_ERROR=4
+
+# -----------------------------------------------------------------------------
+# Script metadata
+# -----------------------------------------------------------------------------
+readonly SCRIPT_VERSION="1.0.0"
+readonly SCRIPT_NAME="${0##*/}"
+
+# -----------------------------------------------------------------------------
+# Color support (respects NO_COLOR standard: https://no-color.org/)
+# -----------------------------------------------------------------------------
+if [[ -t 2 ]] && [[ -z "${NO_COLOR:-}" ]] && [[ "${TERM:-dumb}" != "dumb" ]]; then
+  readonly RED=$'\033[0;31m'
+  readonly GREEN=$'\033[0;32m'
+  readonly YELLOW=$'\033[0;33m'
+  readonly BLUE=$'\033[0;34m'
+  readonly RESET=$'\033[0m'
+else
+  readonly RED='' GREEN='' YELLOW='' BLUE='' RESET=''
+fi
+
+# -----------------------------------------------------------------------------
+# Cleanup and signal handling
+# -----------------------------------------------------------------------------
+declare -a CLEANUP_FILES=()
+
+cleanup() {
+  local file
+  for file in "${CLEANUP_FILES[@]}"; do
+    [[ -f "$file" ]] && rm -f "$file"
+  done
+}
+
+trap cleanup EXIT
+trap 'echo "${RED}Interrupted${RESET}" >&2; exit 130' INT
+trap 'echo "${RED}Terminated${RESET}" >&2; exit 143' TERM
+
+# -----------------------------------------------------------------------------
+# Helper functions
+# -----------------------------------------------------------------------------
+
+# Print an error message and exit with specified code
+# Usage: fail [exit_code] message
+fail() {
+  local code="${EXIT_GENERAL_ERROR}"
+  if [[ "$1" =~ ^[0-9]+$ ]]; then
+    code="$1"
+    shift
+  fi
+  echo "${RED}ERROR:${RESET} $*" >&2
+  exit "$code"
+}
+
+# Print a log message to stderr
+log() {
+  echo "${BLUE}[package]${RESET} $*" >&2
+}
+
+# Print a warning message to stderr
+warn() {
+  echo "${YELLOW}WARNING:${RESET} $*" >&2
+}
+
+# Check that an environment variable is set
+# Usage: need VAR_NAME
+need() {
+  local var_name="$1"
+  if [[ -z "${!var_name:-}" ]]; then
+    fail "$EXIT_GENERAL_ERROR" "Missing required environment variable: $var_name"
+  fi
+}
+
+# Compute SHA-256 hash of a file
+# Usage: sha256_of FILE
+sha256_of() {
+  local file="$1"
+  if [[ ! -f "$file" ]]; then
+    fail "$EXIT_GENERAL_ERROR" "File not found: $file"
+  fi
+  sha256sum -- "$file" | awk '{print $1}'
+}
+
+# Sanitize a string for use in filenames
+# Usage: sanitize STRING
+sanitize() {
+  local in="$1"
+  local out="${in//[^A-Za-z0-9._-]/_}"
+  if [[ -z "$out" ]]; then
+    fail "$EXIT_GENERAL_ERROR" "Sanitized string is empty: $in"
+  fi
+  printf '%s\n' "$out"
+}
+
+# Show help message
+show_help() {
+  cat <<EOF
+${SCRIPT_NAME} v${SCRIPT_VERSION} — Deterministic source packaging for SLSA L3/L4
+
+Usage:
+  ${SCRIPT_NAME} [--help] [--version]
+
+Required environment variables:
+  GITHUB_SHA          Commit SHA to package
+  GITHUB_REPOSITORY   Repository in owner/repo format
+  GITHUB_REF_NAME     Tag or branch name
+  GITHUB_REF_TYPE     "tag" for releases, anything else for dry-run
+  GITHUB_RUN_NUMBER   Workflow run number (for dry-run disambiguation)
+
+Optional environment variables:
+  PACKAGING_LANGUAGE  go|generic|auto (default: auto)
+  EXTENDED_METADATA   true|false (default: false)
+  SLSA_BUILDER_IMAGE  Container image for hermetic builds
+
+Outputs (to \$GITHUB_OUTPUT):
+  artifact_path       Path to the produced tarball
+  artifact_filename   Tarball filename
+  artifact_sha256     SHA-256 digest
+  subjects_b64        Base64-encoded subjects for SLSA
+
+Exit codes:
+  0  Success
+  1  General error
+  2  Git error (dirty tree, invalid commit)
+  3  Archive error (empty, missing files)
+  4  Reproducibility error (self-check failed)
+
+EOF
+  exit "$EXIT_SUCCESS"
+}
+
+# -----------------------------------------------------------------------------
+# Argument parsing
+# -----------------------------------------------------------------------------
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help) show_help ;;
+    -V|--version) echo "${SCRIPT_NAME} v${SCRIPT_VERSION}"; exit "$EXIT_SUCCESS" ;;
+    *) fail "$EXIT_GENERAL_ERROR" "Unknown argument: $arg" ;;
+  esac
+done
+
+# -----------------------------------------------------------------------------
+# Main script
+# -----------------------------------------------------------------------------
 
 echo '::group::Validate environment & prepare'
 # Validate required environment variables are present.
@@ -75,18 +235,18 @@ if [[ "$PACKAGING_LANGUAGE" == "auto" ]]; then
 fi
 case "$PACKAGING_LANGUAGE" in
   go|generic) : ;;
-  *) fail "Invalid PACKAGING_LANGUAGE: $PACKAGING_LANGUAGE (expected go|generic|auto)" ;;
+  *) fail "$EXIT_GENERAL_ERROR" "Invalid PACKAGING_LANGUAGE: $PACKAGING_LANGUAGE (expected go|generic|auto)" ;;
 esac
 if [[ "$PACKAGING_LANGUAGE" == "go" ]]; then
   git cat-file -e "${GITHUB_SHA}:go.mod" 2>/dev/null || \
-    fail "PACKAGING_LANGUAGE=go but go.mod not found in ${GITHUB_SHA}"
+    fail "$EXIT_GENERAL_ERROR" "PACKAGING_LANGUAGE=go but go.mod not found in ${GITHUB_SHA}"
 fi
 # Ensure the referenced commit exists in this repository.
-git rev-parse --verify -q "${GITHUB_SHA}^{commit}" >/dev/null || fail "Invalid commit ${GITHUB_SHA}"
+git rev-parse --verify -q "${GITHUB_SHA}^{commit}" >/dev/null || fail "$EXIT_GIT_ERROR" "Invalid commit ${GITHUB_SHA}"
 # Enforce a clean working tree and index so the archive purely reflects the commit.
 if ! git diff --quiet --ignore-submodules --exit-code || \
    ! git diff --quiet --cached --ignore-submodules --exit-code; then
-  fail "Dirty worktree or index, aborting"
+  fail "$EXIT_GIT_ERROR" "Dirty worktree or index, aborting"
 fi
 # Use commit timestamp to seed deterministic tooling.
 SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_SHA")"
@@ -99,22 +259,21 @@ if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
 else
   TAG_SAFE="$(sanitize "${GITHUB_REF_NAME//\//_}")-dryrun-${GITHUB_RUN_NUMBER}"
 fi
-BASENAME=$(echo "${REPO_SAFE}-${TAG_SAFE}" | tr -dc '[:print:]')
-OUTDIR=dist
+readonly BASENAME="$(echo "${REPO_SAFE}-${TAG_SAFE}" | tr -dc '[:print:]')"
+readonly OUTDIR="dist"
 mkdir -p "$OUTDIR"
-ARCHIVE_PATH="${OUTDIR}/${BASENAME}.tar.gz"
-# Helper hash function.
-sha256_of() { sha256sum -- "$1" | awk '{print $1}'; }
+readonly ARCHIVE_PATH="${OUTDIR}/${BASENAME}.tar.gz"
+
 echo '::endgroup::'
 
 echo '::group::Create deterministic archive'
 log "Creating deterministic archive: $ARCHIVE_PATH"
 git archive --format=tar --prefix="${BASENAME}/" "$GITHUB_SHA" | gzip -n -9 > "$ARCHIVE_PATH"
-[ -s "$ARCHIVE_PATH" ] || fail "Archive empty"
+[[ -s "$ARCHIVE_PATH" ]] || fail "$EXIT_ARCHIVE_ERROR" "Archive is empty"
 # Structural guard (list just the target path to avoid broken-pipe edge cases).
 if [[ "$PACKAGING_LANGUAGE" == "go" ]]; then
   if ! tar -tzf "$ARCHIVE_PATH" "${BASENAME}/go.mod" >/dev/null 2>&1; then
-    fail "go.mod not found in archive"
+    fail "$EXIT_ARCHIVE_ERROR" "go.mod not found in archive"
   fi
 fi
 # Primary digest plus subjects (initially only archive, more subjects may be appended later).
@@ -125,13 +284,13 @@ echo '::endgroup::'
 
 echo '::group::Internal reproducibility self-check'
 tmp_rebuild=$(mktemp)
+CLEANUP_FILES+=("$tmp_rebuild")
 git archive --format=tar --prefix="${BASENAME}/" "$GITHUB_SHA" | gzip -n -9 > "$tmp_rebuild"
 artifact_sha256_rebuild="$(sha256_of "$tmp_rebuild")"
-if [ "$artifact_sha256_rebuild" != "$artifact_sha256" ]; then
-  echo "Original digest : $artifact_sha256" >&2
-  echo "Rebuilt  digest: $artifact_sha256_rebuild" >&2
-  rm -f "$tmp_rebuild"
-  fail "Internal reproducibility self-check failed"
+if [[ "$artifact_sha256_rebuild" != "$artifact_sha256" ]]; then
+  echo "${RED}Original digest:${RESET} $artifact_sha256" >&2
+  echo "${RED}Rebuilt  digest:${RESET} $artifact_sha256_rebuild" >&2
+  fail "$EXIT_REPRODUCIBILITY_ERROR" "Internal reproducibility self-check failed"
 fi
 rm -f "$tmp_rebuild"
 echo '::endgroup::'
@@ -167,9 +326,10 @@ echo '::endgroup::'
 
 echo '::group::Script & environment snapshot'
 # Script integrity (hash stored in build.env, no separate file)
-SCRIPT_PATH="$(realpath "$0")"; SCRIPT_DIGEST=$(sha256_of "$SCRIPT_PATH")
+readonly SCRIPT_PATH="$(realpath "$0")"
+readonly SCRIPT_DIGEST="$(sha256_of "$SCRIPT_PATH")"
 # Capture gzip version
-GZIP_VER=$(gzip --version 2>&1 | head -n1 || echo 'unknown')
+readonly GZIP_VER=$(gzip --version 2>&1 | head -n1 || echo 'unknown')
 # Source OS info for runner identification
 if [ -f /etc/os-release ]; then source /etc/os-release; fi
 # Environment summary (no separate .sha256 file)
