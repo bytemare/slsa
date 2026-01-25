@@ -958,9 +958,7 @@ fail() {
 }
 
 step "Fetching published artifact"
-WORK_DIR="/tmp/slsa-repro"
-rm -rf "$WORK_DIR"
-mkdir -p "$WORK_DIR"
+WORK_DIR=$(mktemp -d)
 cd "$WORK_DIR"
 
 SUBJECTS_URL="https://github.com/${REPO}/releases/download/${TAG}/subjects.sha256"
@@ -989,15 +987,14 @@ fi
 ok
 
 step "Rebuilding artifact"
-temp_repo="/tmp/repro-repo"
-rm -rf "$temp_repo"
+temp_repo=$(mktemp -d)
 info "Cloning repository"
 git clone --depth 1 --branch "$TAG" "https://github.com/${REPO}.git" "$temp_repo" >/dev/null 2>&1 || fail "Failed to clone repository for tag $TAG"
 cd "$temp_repo"
 ok
 
 info "Running packaging script"
-export GITHUB_SHA=$(git rev-parse HEAD)
+export GITHUB_SHA="$(git rev-parse HEAD)"
 export GITHUB_REPOSITORY="$REPO"
 export GITHUB_REF_NAME="$TAG"
 export GITHUB_REF_TYPE="tag"
@@ -1024,13 +1021,15 @@ if [[ -n "$EXPECTED_SCRIPT_SHA" && "$EXPECTED_SCRIPT_SHA" != "unknown" ]]; then
     fi
 fi
 
-bash "$PACKAGING_SCRIPT" >/tmp/packaging.log 2>&1
+packaging_log=$(mktemp)
+bash "$PACKAGING_SCRIPT" >"$packaging_log" 2>&1
 status=$?
 set -e
 if [[ $status -ne 0 ]]; then
     fail "Packaging script failed:
-$(cat /tmp/packaging.log)"
+$(cat "$packaging_log")"
 fi
+rm -f "$packaging_log"
 ok
 
 info "Calculating rebuilt digest"
@@ -1068,8 +1067,7 @@ main() {
 
     echo -e "\n${YELLOW}Verifying release: ${REPO} @ ${TAG} (${MODE} mode)${NC}\n"
 
-    WORK_DIR="/tmp/verify-${REPO_NAME}-${TAG}-$$"
-    mkdir -p "$WORK_DIR"
+    WORK_DIR=$(mktemp -d)
     cd "$WORK_DIR"
 
     if ! download_artifacts; then
