@@ -41,20 +41,17 @@ on:
         type: string
         required: false
       cosign_version:
-        description: 'Cosign version for verification'
+        description: 'Cosign version override (default: from tool-versions.json)'
         type: string
         required: false
-        default: v3.0.4
       cosign_sha256:
-        description: 'SHA-256 for the cosign Linux binary'
+        description: 'SHA-256 override for cosign (default: from tool-versions.json)'
         type: string
         required: false
-        default: 10dab2fd2170b5aa0d5c0673a9a2793304960220b314f6a873bf39c2f08287aa
       slsa_verifier_version:
-        description: 'slsa-verifier version (go install)'
+        description: 'slsa-verifier version override (default: from tool-versions.json)'
         type: string
         required: false
-        default: v2.7.1
       workflow_repo:
         description: >-
           Reusable workflow repository (owner/repo) to fetch helper scripts. This is only useful for
@@ -69,17 +66,82 @@ on:
         type: string
         required: true
       builder_image:
-        description: 'Builder image (with digest) for reproduce pre-pull'
+        description: 'Builder image override (default: from tool-versions.json)'
         type: string
         required: false
-        default: golang:1.25-bookworm@sha256:51b6b12427dc03451c24f7fc996c43a20e8a8e56f0849dd0db6ff6e9225cc892
 
 permissions:
   contents: read
   id-token: write
 
 jobs:
+  load_versions:
+    name: Load tool versions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      cosign_version: ${{ steps.resolve.outputs.cosign_version }}
+      cosign_sha256: ${{ steps.resolve.outputs.cosign_sha256 }}
+      slsa_verifier_version: ${{ steps.resolve.outputs.slsa_verifier_version }}
+      builder_image: ${{ steps.resolve.outputs.builder_image }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+
+      - name: Checkout workflow repo
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+        with:
+          repository: ${{ inputs.workflow_repo || 'bytemare/slsa' }}
+          ref: ${{ inputs.workflow_ref }}
+          sparse-checkout: .github/tool-versions.json
+          fetch-depth: 1
+
+      - name: Load and resolve versions
+        id: resolve
+        env:
+          INPUT_COSIGN_VERSION: ${{ inputs.cosign_version }}
+          INPUT_COSIGN_SHA256: ${{ inputs.cosign_sha256 }}
+          INPUT_SLSA_VERIFIER_VERSION: ${{ inputs.slsa_verifier_version }}
+          INPUT_BUILDER_IMAGE: ${{ inputs.builder_image }}
+        run: |
+          set -euo pipefail
+          CONFIG=".github/tool-versions.json"
+
+          cosign_version="${INPUT_COSIGN_VERSION:-$(jq -r '.tools.cosign.version' "$CONFIG")}"
+          cosign_sha256="${INPUT_COSIGN_SHA256:-$(jq -r '.tools.cosign.sha256' "$CONFIG")}"
+          slsa_verifier_version="${INPUT_SLSA_VERIFIER_VERSION:-$(jq -r '.tools["slsa-verifier"].version' "$CONFIG")}"
+
+          if [[ -n "${INPUT_BUILDER_IMAGE:-}" ]]; then
+            builder_image="${INPUT_BUILDER_IMAGE}"
+          else
+            img=$(jq -r '.tools["builder-image"].image' "$CONFIG")
+            tag=$(jq -r '.tools["builder-image"].tag' "$CONFIG")
+            digest=$(jq -r '.tools["builder-image"].digest' "$CONFIG")
+            builder_image="${img}:${tag}@${digest}"
+          fi
+
+          {
+            echo "cosign_version=${cosign_version}"
+            echo "cosign_sha256=${cosign_sha256}"
+            echo "slsa_verifier_version=${slsa_verifier_version}"
+            echo "builder_image=${builder_image}"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Resolved tool versions:"
+          echo "  cosign: ${cosign_version} (sha256: ${cosign_sha256:0:16}...)"
+          echo "  slsa-verifier: ${slsa_verifier_version}"
+          echo "  builder-image: ${builder_image}"
+
   verify:
+    needs: load_versions
     runs-on: ubuntu-latest
     steps:
       - name: Harden runner
@@ -182,20 +244,20 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
           if [[ "$need_verifier" == "true" ]]; then
-            COSIGN_VERSION="${{ inputs.cosign_version }}"
-            COSIGN_SHA256="${{ inputs.cosign_sha256 }}"
+            COSIGN_VERSION="${{ needs.load_versions.outputs.cosign_version }}"
+            COSIGN_SHA256="${{ needs.load_versions.outputs.cosign_sha256 }}"
             curl -sSfL --proto '=https' --proto-redir '=https' --max-redirs 1 \
               -o cosign "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
             echo "${COSIGN_SHA256}  cosign" | sha256sum -c -
             install -m 0755 cosign /usr/local/bin/cosign
 
-            go install github.com/slsa-framework/slsa-verifier/v2/cli/slsa-verifier@${{ inputs.slsa_verifier_version }}
+            go install github.com/slsa-framework/slsa-verifier/v2/cli/slsa-verifier@${{ needs.load_versions.outputs.slsa_verifier_version }}
             echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
           fi
   
           if [[ "$need_docker" == "true" ]]; then
             docker info >/dev/null
-            docker pull "${{ inputs.builder_image }}" >/dev/null
+            docker pull "${{ needs.load_versions.outputs.builder_image }}" >/dev/null
           fi
 
       - name: Run verification modes

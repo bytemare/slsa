@@ -204,6 +204,44 @@ The following table maps the current [SLSA v1.2-rc1](https://slsa.dev/spec/v1.2-
 
 ---
 
+## Supply Chain Security
+
+This project implements multiple layers of supply chain hardening:
+
+### Tool Version and Hash Pinning
+
+All external tools used in CI/CD workflows (cosign, gh, jq, slsa-verifier) are pinned to specific versions **and** verified against SHA256 checksums before execution. This defends against:
+
+- **Version tag manipulation** — Even if an attacker compromises a release tag, the hash verification will fail
+- **Binary substitution attacks** — Downloaded binaries are verified against known-good hashes before use
+- **Supply chain injection** — No tool can execute without matching its recorded fingerprint
+
+Tool versions and hashes are maintained in a single source of truth: [.github/tool-versions.json](.github/tool-versions.json).
+
+### Automated Hash Updates
+
+When [Renovate](https://docs.renovatebot.com/) detects a new tool version, it opens a PR updating the version in `tool-versions.json`. A companion workflow automatically:
+
+1. Downloads the new binary
+2. Computes its SHA256 hash
+3. Updates `tool-versions.json` with the new hash
+4. Commits the change to the PR
+
+This keeps hashes synchronized with versions while maintaining full auditability—all hash changes are visible in PR diffs.
+
+### Industry Alignment
+
+This approach follows patterns used by security-focused projects:
+
+| Practice | This Project | kubernetes/kubernetes | google/oss-fuzz | slsa-framework |
+|----------|-------------|----------------------|-----------------|----------------|
+| Version pinning | ✅ | ✅ | ✅ | ✅ |
+| SHA256 hash verification | ✅ | ✅ (Docker images) | ✅ | ✅ (runtime) |
+| Central version config | ✅ `tool-versions.json` | VERSION files | ENV in Dockerfile | Workflow outputs |
+| Automated updates | ✅ Renovate + hash workflow | Manual | Manual | Renovate |
+
+---
+
 ## Versioning and Compatibility
 
 Even though releases follow [Semantic Versioning](https://semver.org/), you should use the latest available commit hash from main and pass it as `workflow_ref` to keep helper scripts pinned.

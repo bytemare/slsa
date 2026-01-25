@@ -1,0 +1,31 @@
+{
+  "$comment": "Tool versions and SHA256 hashes for supply chain security. Updated by wf-update-tool-hashes workflow.",
+  "tools": {
+    "cosign": {
+      "version": "v3.0.4",
+      "sha256": "10dab2fd2170b5aa0d5c0673a9a2793304960220b314f6a873bf39c2f08287aa"
+    },
+    "gh": {
+      "version": "v2.85.0",
+      "sha256": "5dcc4e282b9c22c0d31c217805976448c966cfc56c20157c78385a8a62c93cf0"
+    },
+    "jq": {
+      "version": "jq-1.8.1",
+      "sha256": "020468de7539ce70ef1bceaf7cde2e8c4f2ca6c3afb84642aabc5c97d9fc2a0d"
+    },
+    "slsa-verifier": {
+      "version": "v2.7.1"
+    },
+    "cdxgen": {
+      "version": "v12.0.0"
+    },
+    "node": {
+      "version": "24.13.0"
+    },
+    "builder-image": {
+      "image": "golang",
+      "tag": "1.25-bookworm",
+      "digest": "sha256:51b6b12427dc03451c24f7fc996c43a20e8a8e56f0849dd0db6ff6e9225cc892"
+    }
+  }
+}

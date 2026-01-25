@@ -1,0 +1,120 @@
+#
+# SPDX-License-Identifier: MIT
+#
+# Copyright (C) 2026 Daniel Bourdrez. All Rights Reserved.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree or at
+# https://spdx.org/licenses/MIT.html
+#
+
+name: Load Tool Versions
+description: >-
+  Loads tool versions and SHA256 hashes from the central tool-versions.json
+  configuration file. This provides a single source of truth for supply chain
+  security, ensuring all tools are pinned to known-good versions with verified
+  checksums.
+
+inputs:
+  config-path:
+    description: Path to tool-versions.json relative to the workflow repo root
+    required: false
+    default: .github/tool-versions.json
+
+outputs:
+  cosign-version:
+    description: Cosign version
+    value: ${{ steps.load.outputs.cosign_version }}
+  cosign-sha256:
+    description: Cosign SHA256 hash
+    value: ${{ steps.load.outputs.cosign_sha256 }}
+  gh-version:
+    description: GitHub CLI version
+    value: ${{ steps.load.outputs.gh_version }}
+  gh-sha256:
+    description: GitHub CLI SHA256 hash
+    value: ${{ steps.load.outputs.gh_sha256 }}
+  jq-version:
+    description: jq version
+    value: ${{ steps.load.outputs.jq_version }}
+  jq-sha256:
+    description: jq SHA256 hash
+    value: ${{ steps.load.outputs.jq_sha256 }}
+  slsa-verifier-version:
+    description: slsa-verifier version
+    value: ${{ steps.load.outputs.slsa_verifier_version }}
+  cdxgen-version:
+    description: cdxgen version
+    value: ${{ steps.load.outputs.cdxgen_version }}
+  node-version:
+    description: Node.js version
+    value: ${{ steps.load.outputs.node_version }}
+  builder-image:
+    description: Builder image with digest (image:tag@digest)
+    value: ${{ steps.load.outputs.builder_image }}
+
+runs:
+  using: composite
+  steps:
+    - name: Load versions from config
+      id: load
+      shell: bash
+      env:
+        CONFIG_PATH: ${{ inputs.config-path }}
+      run: |
+        set -euo pipefail
+
+        if [[ ! -f "$CONFIG_PATH" ]]; then
+          echo "::error::Config file not found: $CONFIG_PATH"
+          exit 1
+        fi
+
+        # Validate JSON
+        if ! jq empty "$CONFIG_PATH" 2>/dev/null; then
+          echo "::error::Invalid JSON in $CONFIG_PATH"
+          exit 1
+        fi
+
+        # Extract tool versions and hashes
+        cosign_version=$(jq -r '.tools.cosign.version // empty' "$CONFIG_PATH")
+        cosign_sha256=$(jq -r '.tools.cosign.sha256 // empty' "$CONFIG_PATH")
+        gh_version=$(jq -r '.tools.gh.version // empty' "$CONFIG_PATH")
+        gh_sha256=$(jq -r '.tools.gh.sha256 // empty' "$CONFIG_PATH")
+        jq_version=$(jq -r '.tools.jq.version // empty' "$CONFIG_PATH")
+        jq_sha256=$(jq -r '.tools.jq.sha256 // empty' "$CONFIG_PATH")
+        slsa_verifier_version=$(jq -r '.tools["slsa-verifier"].version // empty' "$CONFIG_PATH")
+        cdxgen_version=$(jq -r '.tools.cdxgen.version // empty' "$CONFIG_PATH")
+        node_version=$(jq -r '.tools.node.version // empty' "$CONFIG_PATH")
+
+        # Build builder image string: image:tag@digest
+        builder_image_name=$(jq -r '.tools["builder-image"].image // empty' "$CONFIG_PATH")
+        builder_image_tag=$(jq -r '.tools["builder-image"].tag // empty' "$CONFIG_PATH")
+        builder_image_digest=$(jq -r '.tools["builder-image"].digest // empty' "$CONFIG_PATH")
+        if [[ -n "$builder_image_name" && -n "$builder_image_tag" && -n "$builder_image_digest" ]]; then
+          builder_image="${builder_image_name}:${builder_image_tag}@${builder_image_digest}"
+        else
+          builder_image=""
+        fi
+
+        # Output all values
+        {
+          echo "cosign_version=${cosign_version}"
+          echo "cosign_sha256=${cosign_sha256}"
+          echo "gh_version=${gh_version}"
+          echo "gh_sha256=${gh_sha256}"
+          echo "jq_version=${jq_version}"
+          echo "jq_sha256=${jq_sha256}"
+          echo "slsa_verifier_version=${slsa_verifier_version}"
+          echo "cdxgen_version=${cdxgen_version}"
+          echo "node_version=${node_version}"
+          echo "builder_image=${builder_image}"
+        } >> "$GITHUB_OUTPUT"
+
+        echo "Loaded tool versions from $CONFIG_PATH:"
+        echo "  cosign: ${cosign_version} (sha256: ${cosign_sha256:0:16}...)"
+        echo "  gh: ${gh_version} (sha256: ${gh_sha256:0:16}...)"
+        echo "  jq: ${jq_version} (sha256: ${jq_sha256:0:16}...)"
+        echo "  slsa-verifier: ${slsa_verifier_version}"
+        echo "  cdxgen: ${cdxgen_version}"
+        echo "  node: ${node_version}"
+        echo "  builder-image: ${builder_image}"
