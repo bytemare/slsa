@@ -26,12 +26,35 @@ on:
         description: 'Emit VSA during verification (true/false)'
         required: false
         default: 'false'
+  pull_request:
+    paths:
+      - .github/workflows/verify.yaml
+      - .github/workflows/wf-verify.yaml
+      - .github/workflows/slsa.yaml
+      - verify-release.sh
 
 permissions: {}
 
+env:
+  PR_VERIFY_TAG: v0.0.12
+
 jobs:
+  pr_verification:
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/verify.yaml
+    with:
+      repo: ${{ github.repository }}
+      tag: ${{ env.PR_VERIFY_TAG }}
+      mode: full,reproduce
+      emit_vsa: true
+      verifier_id: https://github.com/bytemare/slsa/.github/workflows/verify.yaml
+      workflow_ref: ${{ github.event.pull_request.head.sha }}
+
   quick_verification:
-    if: ${{ github.event.inputs.mode == 'quick' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'quick' }}
     permissions:
       contents: read
       id-token: write
@@ -43,7 +66,7 @@ jobs:
       workflow_ref: ${{ github.sha }}
 
   full_verification:
-    if: ${{ contains(github.event.inputs.mode, 'full') || !github.event.inputs.mode }}
+    if: ${{ github.event_name == 'workflow_dispatch' && (contains(github.event.inputs.mode, 'full') || !github.event.inputs.mode) }}
     permissions:
       contents: read
       id-token: write
@@ -57,7 +80,7 @@ jobs:
       workflow_ref: ${{ github.sha }}
 
   reproduce_verification:
-    if: contains(github.event.inputs.mode, 'reproduce')
+    if: ${{ github.event_name == 'workflow_dispatch' && contains(github.event.inputs.mode, 'reproduce') }}
     permissions:
       contents: read
       id-token: write
@@ -69,7 +92,7 @@ jobs:
       workflow_ref: ${{ github.sha }}
 
   vsa_only:
-    if: ${{ github.event.inputs.mode == 'vsa' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'vsa' }}
     permissions:
       contents: read
       id-token: write

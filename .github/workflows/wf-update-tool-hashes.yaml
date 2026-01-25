@@ -50,7 +50,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      workflows: write
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76
@@ -77,6 +76,7 @@ jobs:
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update tool hashes (dispatch)
         if: ${{ github.event_name == 'workflow_dispatch' }}
@@ -96,6 +96,9 @@ jobs:
           bash scripts/update-tool-versions.sh
 
       - name: Commit updates
+        env:
+          RENOVATE_WORKFLOWS: ${{ secrets.RENOVATE_WORKFLOWS }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
           if git diff --quiet; then
@@ -106,4 +109,17 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .github/workflows/slsa.yaml .github/workflows/verify.yaml
           git commit -m "chore: refresh tool hashes"
-          git push
+          if [[ -z "${RENOVATE_WORKFLOWS:-}" ]]; then
+            echo "Missing RENOVATE_WORKFLOWS token for push." >&2
+            exit 1
+          fi
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            target_ref="${PR_HEAD_REF}"
+          else
+            target_ref="${GITHUB_REF_NAME}"
+          fi
+          if [[ -z "$target_ref" ]]; then
+            echo "Unable to determine target ref for push." >&2
+            exit 1
+          fi
+          git push "https://x-access-token:${RENOVATE_WORKFLOWS}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${target_ref}"
