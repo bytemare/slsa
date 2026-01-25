@@ -476,6 +476,7 @@ jobs:
             tuf-repo-cdn.sigstore.dev:443
             ctfe.sigstore.dev:443
             oauth2.sigstore.dev:443
+            timestamp.sigstore.dev:443
             auth.docker.io:443
             registry-1.docker.io:443
             production.cloudflare.docker.com:443

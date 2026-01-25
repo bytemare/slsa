@@ -1,0 +1,38 @@
+#
+# SPDX-License-Identifier: MIT
+#
+# Copyright (C) 2026 Daniel Bourdrez. All Rights Reserved.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree or at
+# https://spdx.org/licenses/MIT.html
+#
+
+---
+
+name: Test Verify SLSA Compliance
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/verify.yaml
+      - .github/workflows/wf-verify.yaml
+      - .github/workflows/slsa.yaml
+      - verify-release.sh
+
+permissions: {}
+
+jobs:
+  Verification:
+    if: ${{ github.event_name == 'pull_request' }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/verify.yaml
+    with:
+      repo: ${{ github.repository }}
+      tag: v0.0.12
+      mode: full,reproduce
+      emit_vsa: true
+      verifier_id: https://github.com/bytemare/slsa/.github/workflows/verify.yaml
+      workflow_ref: ${{ github.event.pull_request.head.sha }}
