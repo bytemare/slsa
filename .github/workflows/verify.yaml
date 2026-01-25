@@ -93,16 +93,20 @@ jobs:
     steps:
       - name: Validate required inputs
         shell: bash
+        env:
+          INPUT_WORKFLOW_REF: ${{ inputs.workflow_ref }}
+          INPUT_REPO: ${{ inputs.repo }}
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [[ -z "${{ inputs.workflow_ref }}" ]]; then
+          if [[ -z "$INPUT_WORKFLOW_REF" ]]; then
             echo "::error title=Missing Required Input::workflow_ref is required. Set it to the same ref used in uses: ...@<ref>"
             exit 1
           fi
-          if [[ -z "${{ inputs.repo }}" ]]; then
+          if [[ -z "$INPUT_REPO" ]]; then
             echo "::error title=Missing Required Input::repo is required (owner/name format)"
             exit 1
           fi
-          if [[ -z "${{ inputs.tag }}" ]]; then
+          if [[ -z "$INPUT_TAG" ]]; then
             echo "::error title=Missing Required Input::tag is required"
             exit 1
           fi
@@ -224,6 +228,10 @@ jobs:
         shell: bash
         env:
           GHA_MODES_INPUT: ${{ inputs.mode }}
+          GHA_COSIGN_VERSION: ${{ needs.load_versions.outputs.cosign_version }}
+          GHA_COSIGN_SHA256: ${{ needs.load_versions.outputs.cosign_sha256 }}
+          GHA_SLSA_VERIFIER_VERSION: ${{ needs.load_versions.outputs.slsa_verifier_version }}
+          GHA_BUILDER_IMAGE: ${{ needs.load_versions.outputs.builder_image }}
         run: |
           set -euo pipefail
 
@@ -269,21 +277,19 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
           if [[ "$need_verifier" == "true" ]]; then
-            COSIGN_VERSION="${{ needs.load_versions.outputs.cosign_version }}"
-            COSIGN_SHA256="${{ needs.load_versions.outputs.cosign_sha256 }}"
             curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
               --proto '=https' --proto-redir '=https' --max-redirs 1 \
-              -o cosign "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
-            echo "${COSIGN_SHA256}  cosign" | sha256sum -c -
+              -o cosign "https://github.com/sigstore/cosign/releases/download/${GHA_COSIGN_VERSION}/cosign-linux-amd64"
+            echo "${GHA_COSIGN_SHA256}  cosign" | sha256sum -c -
             install -m 0755 cosign /usr/local/bin/cosign
 
-            go install github.com/slsa-framework/slsa-verifier/v2/cli/slsa-verifier@${{ needs.load_versions.outputs.slsa_verifier_version }}
+            go install github.com/slsa-framework/slsa-verifier/v2/cli/slsa-verifier@"${GHA_SLSA_VERIFIER_VERSION}"
             echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
           fi
   
           if [[ "$need_docker" == "true" ]]; then
             docker info >/dev/null
-            docker pull "${{ needs.load_versions.outputs.builder_image }}" >/dev/null
+            docker pull "${GHA_BUILDER_IMAGE}" >/dev/null
           fi
 
       - name: Run verification modes

@@ -162,8 +162,10 @@ jobs:
     steps:
       - name: Validate required inputs
         shell: bash
+        env:
+          INPUT_WORKFLOW_REF: ${{ inputs.workflow_ref }}
         run: |
-          if [[ -z "${{ inputs.workflow_ref }}" ]]; then
+          if [[ -z "$INPUT_WORKFLOW_REF" ]]; then
             echo "::error title=Missing Required Input::workflow_ref is required. Set it to the same ref used in uses: ...@<ref>"
             exit 1
           fi
@@ -664,10 +666,10 @@ jobs:
       - name: Verify release (reproduce)
         env:
           GH_TOKEN: ${{ github.token }}
+          WORKFLOW_REPO: ${{ steps.workflow_source.outputs.repo }}
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
-          WORKFLOW_REPO="${{ steps.workflow_source.outputs.repo }}"
           ./slsa-workflow/verify-release.sh \
             --repo "${GITHUB_REPOSITORY}" \
             --tag "${TAG}" \
@@ -678,11 +680,11 @@ jobs:
         env:
           COSIGN_EXPERIMENTAL: 1
           GH_TOKEN: ${{ github.token }}
+          WORKFLOW_REPO: ${{ steps.workflow_source.outputs.repo }}
+          WORKFLOW_REF: ${{ steps.workflow_source.outputs.ref }}
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
-          WORKFLOW_REPO="${{ steps.workflow_source.outputs.repo }}"
-          WORKFLOW_REF="${{ steps.workflow_source.outputs.ref }}"
           WORKFLOW_VERIFIER_ID="https://github.com/${WORKFLOW_REPO}/.github/workflows/slsa.yaml@${WORKFLOW_REF}"
           POLICY_URI="https://github.com/${WORKFLOW_REPO}/blob/${WORKFLOW_REF}/verify-release.sh"
           VERIFY_SCRIPT_SHA=$(sha256sum slsa-workflow/verify-release.sh | awk '{print $1}')
