@@ -75,6 +75,10 @@ permissions:
   id-token: write
 
 jobs:
+
+  # ===============================================================
+  # Load tool versions from central config
+  # ===============================================================
   load_versions:
     name: Load tool versions
     runs-on: ubuntu-latest
@@ -140,6 +144,9 @@ jobs:
           echo "  slsa-verifier: ${slsa_verifier_version}"
           echo "  builder-image: ${builder_image}"
 
+  # ===============================================================
+  # Run verification modes
+  # ===============================================================
   verify:
     needs: load_versions
     runs-on: ubuntu-latest

@@ -14,6 +14,13 @@ name: SLSA Build Level 3 Provenance and GitHub Artifact Attestations
 
 on:
   workflow_call:
+
+    ###################################################################
+    #                                                                 #
+    #                         Workflow inputs                         #
+    #                                                                 #
+    ###################################################################
+
     inputs:
       create_release:
         description: >-
@@ -114,6 +121,12 @@ on:
         type: string
         required: true
 
+###################################################################
+#                                                                 #
+#                  Permissions and concurrency                    #
+#                                                                 #
+###################################################################
+
 permissions: { }
 
 concurrency:
@@ -125,6 +138,10 @@ defaults:
     shell: bash
 
 jobs:
+
+  # ===============================================================
+  # Load tool versions from central config
+  # ===============================================================
   load_versions:
     name: Load tool versions
     runs-on: ubuntu-latest
@@ -221,8 +238,10 @@ jobs:
           echo "  node: ${node_version}"
           echo "  builder-image: ${builder_image}"
 
+  # ===============================================================
+  # Hermetic source packaging (offline, containerized)
+  # ===============================================================
   package_source:
-    # Hermetic packaging job: runs offline in the pinned Go toolchain container.
     name: Package hermetic source
     needs: load_versions
     if: ${{ inputs.dry_run || github.ref_type == 'tag' }}
@@ -308,8 +327,10 @@ jobs:
             build.env
             verification.json
 
+  # ===============================================================
+  # SBOM generation, attestations, and release publishing
+  # ===============================================================
   sbom_and_release:
-    # Networked follow-up job: consumes packaging artifacts, generates SBOM/attestations.
     name: SBOM + Attest + Publish
     needs: [load_versions, package_source]
     if: ${{ inputs.dry_run || github.ref_type == 'tag' }}
@@ -534,6 +555,9 @@ jobs:
             slsa-workflow/scripts/package-source.sh
             package/verification.json
 
+  # ===============================================================
+  # Post-release verification and VSA emission
+  # ===============================================================
   verify_release_vsa:
     name: Verify release (full + reproduce) & emit VSA
     if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
@@ -710,8 +734,11 @@ jobs:
       emit_vsa: false
       workflow_repo: ${{ inputs.workflow_repo }}
       workflow_ref: ${{ inputs.workflow_ref }}
+
+  # ===============================================================
+  # Reproducibility check (SLSA Level 4 preparation)
+  # ===============================================================
   rebuild_verify:
-    # Purpose: independently re-run packaging to assert determinism (SLSA Level 4).
     name: Rebuild & Verify Determinism
     if: ${{ github.ref_type == 'tag' && !inputs.dry_run }}
     needs: [load_versions, package_source]
@@ -791,6 +818,9 @@ jobs:
           fi
           echo 'Rebuild determinism verified.'
 
+  # ===============================================================
+  # SLSA Level 3 provenance generation
+  # ===============================================================
   provenance_slsa:
     name: SLSA Build Level 3 Provenance
     if: ${{ !inputs.dry_run && github.ref_type == 'tag' }}
