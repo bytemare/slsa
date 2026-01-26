@@ -134,7 +134,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
-          FILE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tool_versions_file }}
+          FILE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tool_versions_file || .github/tool-versions.json }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
