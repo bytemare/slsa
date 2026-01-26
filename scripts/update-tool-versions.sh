@@ -32,6 +32,7 @@
 #   GH_VERSION             Override gh version (default: from config)
 #   JQ_VERSION             Override jq version (default: from config)
 #   SLSA_VERIFIER_VERSION  Override slsa-verifier version (default: from config)
+#   TOOL_VERSIONS_FILE     Override tool versions file path
 #   GITHUB_TOKEN           Authentication for GitHub API (preferred)
 #   GH_TOKEN               Alternative auth token
 #
@@ -189,7 +190,16 @@ done
 # ===========================================================================
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly ROOT_DIR
-readonly CONFIG_FILE="${ROOT_DIR}/.github/tool-versions.json"
+if [[ -n "${TOOL_VERSIONS_FILE:-}" ]]; then
+  if [[ "${TOOL_VERSIONS_FILE}" = /* ]]; then
+    CONFIG_FILE="${TOOL_VERSIONS_FILE}"
+  else
+    CONFIG_FILE="${ROOT_DIR}/${TOOL_VERSIONS_FILE}"
+  fi
+else
+  CONFIG_FILE="${ROOT_DIR}/.github/tool-versions.json"
+fi
+readonly CONFIG_FILE
 
 # Verify config file exists
 [[ -f "$CONFIG_FILE" ]] || fail "$EXIT_CONFIG_ERROR" "Configuration file not found: $CONFIG_FILE"
