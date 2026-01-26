@@ -23,7 +23,7 @@ This project bridges the gap between "we have provenance" and "our users can ind
 ### When to Use This
 
 | Use Case | This Project | Alternatives |
-|----------|--------------|--------------|
+| ---------- | -------------- | -------------- |
 | **Binary releases** (CLI tools, compiled artifacts) | ✅ Ideal — full provenance + user verification script | slsa-github-generator alone (no consumer tooling) |
 | **Container images** | ⚠️ Partial — use for source verification; container signing needs additional setup | sigstore/cosign directly |
 | **Go module libraries** | ⚠️ Consider — Go's checksum database provides integrity; this adds provenance + SBOM | go.sum + proxy may suffice |
@@ -33,7 +33,7 @@ This project bridges the gap between "we have provenance" and "our users can ind
 ### What Makes This Different
 
 | Capability | slsa-github-generator | GoReleaser + cosign | This Project |
-|------------|----------------------|---------------------|--------------|
+| ------------ | ---------------------- | --------------------- | -------------- |
 | SLSA provenance | ✅ | ✅ (via plugin) | ✅ (uses slsa-github-generator) |
 | Consumer verification script | ❌ | ❌ | ✅ `verify-release.sh` |
 | Verification Summary Attestation | ❌ | ❌ | ✅ Signed VSA generation |
@@ -69,7 +69,6 @@ Building on the [SLSA generator](https://github.com/slsa-framework/slsa-github-g
 - [SLSA Alignment](#slsa-alignment)
 - [Supply Chain Security](#supply-chain-security)
 - [Versioning and Compatibility](#versioning-and-compatibility)
-- [Contributing to the SLSA Ecosystem](#contributing-to-the-slsa-ecosystem)
 - [Additional Resources](#additional-resources)
 - [License](#license)
 
