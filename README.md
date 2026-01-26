@@ -5,6 +5,47 @@
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/11820/badge)](https://www.bestpractices.dev/projects/11820)
 [![Release](https://github.com/bytemare/slsa/actions/workflows/wf-release.yaml/badge.svg)](https://github.com/bytemare/slsa/actions/workflows/wf-release.yaml)
 
+> **Complete SLSA Level 3 workflows with consumer verification tooling and Level 4 reproducibility preparation.**
+
+---
+
+## Why This Project?
+
+The SLSA ecosystem provides excellent building blocks — [slsa-github-generator](https://github.com/slsa-framework/slsa-github-generator) for provenance, [cosign](https://github.com/sigstore/cosign) for signing, [slsa-verifier](https://github.com/slsa-framework/slsa-verifier) for validation. But achieving *complete* SLSA compliance requires integrating these pieces into a cohesive workflow that handles:
+
+- **Deterministic source packaging** — reproducible archives with stable timestamps
+- **Consumer verification** — downloadable script your users can run locally
+- **Verification Summary Attestations (VSA)** — signed policy results for audit trails
+- **Level 4 preparation** — reproducibility evidence before the spec is finalized
+
+This project bridges the gap between "we have provenance" and "our users can independently verify everything."
+
+### When to Use This
+
+| Use Case | This Project | Alternatives |
+|----------|--------------|--------------|
+| **Binary releases** (CLI tools, compiled artifacts) | ✅ Ideal — full provenance + user verification script | slsa-github-generator alone (no consumer tooling) |
+| **Container images** | ⚠️ Partial — use for source verification; container signing needs additional setup | sigstore/cosign directly |
+| **Go module libraries** | ⚠️ Consider — Go's checksum database provides integrity; this adds provenance + SBOM | go.sum + proxy may suffice |
+| **Multi-language monorepos** | ✅ Works — language-agnostic source packaging | Manual integration of multiple tools |
+| **Compliance requirements** | ✅ Ideal — generates audit artifacts (VSA, SBOM, provenance) | Manual assembly of evidence |
+
+### What Makes This Different
+
+| Capability | slsa-github-generator | GoReleaser + cosign | This Project |
+|------------|----------------------|---------------------|--------------|
+| SLSA provenance | ✅ | ✅ (via plugin) | ✅ (uses slsa-github-generator) |
+| Consumer verification script | ❌ | ❌ | ✅ `verify-release.sh` |
+| Verification Summary Attestation | ❌ | ❌ | ✅ Signed VSA generation |
+| Reproducibility verification | ❌ | ❌ | ✅ Container-based rebuild |
+| SBOM generation | ❌ | ✅ | ✅ CycloneDX with attestation |
+| Single workflow setup | ❌ (building block) | ✅ | ✅ |
+| Level 4 preparation | ❌ | ❌ | ✅ Evidence collection |
+
+---
+
+## Overview
+
 This project provides a set of tools to help software producers build and publish SLSA Level 3-compliant releases, and for consumers to verify them. They also gather reproducibility evidence to ease adoption of the upcoming SLSA Level 4 guidance once that level is formally published.
 - Reusable GitHub Actions Workflows for packaging and verifying releases
 - The `verify-release.sh` shell script helper for local verification and reproducibility checks (the same as used in the GitHub Actions verifier), including VSA generation
@@ -15,8 +56,12 @@ Building on the [SLSA generator](https://github.com/slsa-framework/slsa-github-g
 
 ## Table of Contents
 
+- [Why This Project?](#why-this-project)
 - [Quick Start](#quick-start)
 - [Features](#features)
+  - [For Software Producers](#for-software-producers)
+  - [For Software Consumers](#for-software-consumers)
+  - [For Compliance Teams](#for-compliance-teams)
 - [Prerequisites](#prerequisites)
 - [Supported Languages](#supported-languages)
 - [Release - How to Use the Workflow](#release---how-to-use-the-workflow)
@@ -24,6 +69,7 @@ Building on the [SLSA generator](https://github.com/slsa-framework/slsa-github-g
 - [SLSA Alignment](#slsa-alignment)
 - [Supply Chain Security](#supply-chain-security)
 - [Versioning and Compatibility](#versioning-and-compatibility)
+- [Contributing to the SLSA Ecosystem](#contributing-to-the-slsa-ecosystem)
 - [Additional Resources](#additional-resources)
 - [License](#license)
 
@@ -50,15 +96,27 @@ For detailed configuration options, see [Release - How to Use the Workflow](#rel
 
 ## Features
 
-- 🔒 **SLSA Level 3 Compliance** - Provenance via the official [slsa-github-generator](https://github.com/slsa-framework/slsa-github-generator), plus deterministic packaging and hermetic reproducible builds (to the extent of what GitHub provides)
-- 🧭 **Level 4 Preparation** - Additional reproducibility materials to support an eventual Level 4 definition (Level 4 is not fully defined, yet)
-- 📦 **SBOM** - [CycloneDX Software Bill of Materials](https://cyclonedx.org/specification/overview/)
-- ✍️ **Keyless Signing** - [Cosign](https://github.com/sigstore/cosign) signatures with [Rekor](https://rekor.sigstore.dev) transparency logs
-- 🗂️ **Complete Metadata** - attached to releases (commit metadata, environment snapshots, verification reports, subjects, checksums, manifests, SBOM, provenance, ...)
-- ✅ **Verification Summary Attestation (VSA)** - Signed VSA documenting policy results for consumers
-- ⚓️ **Native GitHub Attestations** - With the SBOM and build provenance
-- 🛠️ **Easy Integration** - Plug-and-play with minimal setup
-- 📜 **Attached to release** - The example workflow below will attach all artifacts to the GitHub Release
+### For Software Producers
+
+- 🔒 **SLSA Level 3 Compliance** — Provenance via the official [slsa-github-generator](https://github.com/slsa-framework/slsa-github-generator), plus deterministic packaging and hermetic reproducible builds
+- 🧭 **Level 4 Preparation** — Additional reproducibility materials ready for when the Level 4 definition solidifies
+- 📦 **SBOM Generation** — [CycloneDX Software Bill of Materials](https://cyclonedx.org/specification/overview/) with GitHub attestation
+- ✍️ **Keyless Signing** — [Cosign](https://github.com/sigstore/cosign) signatures with [Rekor](https://rekor.sigstore.dev) transparency logs
+- 🛠️ **Easy Integration** — Single reusable workflow with sensible defaults
+
+### For Software Consumers
+
+- ✅ **Verification Script** — Download and run `verify-release.sh` to independently verify any release
+- 🔍 **Multiple Verification Modes** — Quick (checksums), Full (provenance + SBOM), Reproduce (container rebuild)
+- 🏷️ **Verification Summary Attestation (VSA)** — Signed proof that verification passed, for your own audit trail
+- 📋 **Clear Output** — One-line pass/fail with detailed logs available
+
+### For Compliance Teams
+
+- 📜 **Complete Audit Trail** — All artifacts attached to GitHub releases (provenance, SBOM, signatures, verification reports)
+- ⚓️ **Native GitHub Attestations** — SBOM and build provenance in GitHub's attestation store
+- 🗂️ **Rich Metadata** — Commit info, environment snapshots, checksums, manifests
+- 📊 **Policy Documentation** — VSA documents which policies were evaluated and their results
 
 ---
 
