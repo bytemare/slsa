@@ -4,7 +4,8 @@
     "github>bytemare/renovate-config"
   ],
   "gitIgnoredAuthors": [
-    "41898282+github-actions[bot]@users.noreply.github.com"
+    "41898282+github-actions[bot]@users.noreply.github.com",
+    "pinned-hash-updated[bot]@users.noreply.github.com"
   ],
   "packageRules": [
     {
