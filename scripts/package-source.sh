@@ -106,7 +106,7 @@ declare -a CLEANUP_FILES=()
 cleanup() {
   local file
   for file in "${CLEANUP_FILES[@]}"; do
-    [[ -f "$file" ]] && rm -f "$file"
+    if [[ -f "$file" ]]; then rm -f "$file"; fi
   done
 }
 
