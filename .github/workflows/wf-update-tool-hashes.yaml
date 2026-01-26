@@ -46,6 +46,10 @@ on:
       slsa_verifier_version:
         description: 'Override slsa-verifier version (default: current)'
         required: false
+      tool_versions_file:
+        description: 'Path to the tool versions file'
+        required: false
+        default: '.github/tool-versions.json'
 
 permissions: {}
 
@@ -76,6 +80,14 @@ jobs:
             objects.githubusercontent.com:443
             release-assets.githubusercontent.com:443
 
+      - name: Get app token
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf
+        id: app-token
+        with:
+          app-id: ${{ vars.PINNED_HASH_UPDATED_APP_ID }}
+          private-key: ${{ secrets.PINNED_HASH_UPDATED_KEY }}
+
       - name: Checkout PR branch
         if: ${{ github.event_name == 'pull_request' }}
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
@@ -83,21 +95,22 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}
-          token: ${{ secrets.RENOVATE_WORKFLOWS }}
-          persist-credentials: true
+          token: ${{ steps.app-token.outputs.token || github.token }}
+          persist-credentials: false
 
       - name: Checkout branch
         if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           fetch-depth: 0
-          token: ${{ secrets.RENOVATE_WORKFLOWS }}
-          persist-credentials: true
+          token: ${{ steps.app-token.outputs.token || github.token }}
+          persist-credentials: false
 
       - name: Update tool hashes (dispatch)
         if: ${{ github.event_name == 'workflow_dispatch' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOOL_VERSIONS_FILE: ${{ github.event.inputs.tool_versions_file }}
           COSIGN_VERSION: ${{ github.event.inputs.use_latest == 'true' && 'latest' || github.event.inputs.cosign_version }}
           GH_VERSION: ${{ github.event.inputs.use_latest == 'true' && 'latest' || github.event.inputs.gh_version }}
           JQ_VERSION: ${{ github.event.inputs.use_latest == 'true' && 'latest' || github.event.inputs.jq_version }}
@@ -110,44 +123,134 @@ jobs:
         if: ${{ github.event_name == 'pull_request' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOOL_VERSIONS_FILE: ${{ github.event.inputs.tool_versions_file }}
         run: |
           set -euo pipefail
           bash scripts/update-tool-versions.sh
 
       - name: Commit and push updates
+        shell: bash
         env:
-          GH_TOKEN: ${{ secrets.RENOVATE_WORKFLOWS }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          FILE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tool_versions_file }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          if git diff --quiet .github/tool-versions.json; then
+          if git diff --quiet "$FILE"; then
             echo "No changes to commit."
             exit 0
           fi
 
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            target_branch="${PR_HEAD_REF}"
-          else
-            target_branch="${GITHUB_REF_NAME}"
-          fi
-
-          if [[ -z "$target_branch" ]]; then
-            echo "Unable to determine target branch for commit." >&2
+          api_token="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+          if [[ -z "$api_token" ]]; then
+            echo "Missing GitHub token for API calls." >&2
             exit 1
           fi
 
-          # Get the current file content (base64 encoded)
-          file_content=$(base64 -w 0 .github/tool-versions.json)
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            latest_commit_sha="${PR_HEAD_SHA}"
+            target_ref="${PR_HEAD_REF}"
+          else
+            latest_commit_sha="$(git rev-parse HEAD)"
+            target_ref="${GITHUB_REF_NAME}"
+          fi
 
-          # Get the current file SHA (required for updates)
-          file_sha=$(gh api "repos/${GITHUB_REPOSITORY}/contents/.github/tool-versions.json?ref=${target_branch}" --jq '.sha')
+          if [[ -z "$latest_commit_sha" || -z "$target_ref" ]]; then
+            echo "Unable to resolve target ref or commit SHA." >&2
+            exit 1
+          fi
 
-          # Create commit via GitHub API (automatically verified/signed by GitHub)
-          gh api "repos/${GITHUB_REPOSITORY}/contents/.github/tool-versions.json" \
-            --method PUT \
-            --field message="chore: refresh tool hashes" \
-            --field content="${file_content}" \
-            --field sha="${file_sha}" \
-            --field branch="${target_branch}"
+          file_content_b64=$(base64 < "${FILE}" | tr -d '\n')
 
-          echo "Committed and pushed via GitHub API (verified signature)."
+          blob_sha=$(curl -sSfL \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${api_token}" \
+            -d "$(jq -n --arg content "$file_content_b64" '{content: $content, encoding: "base64"}')" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/blobs" \
+            | jq -r '.sha')
+
+          if [[ -z "$blob_sha" || "$blob_sha" == "null" ]]; then
+            echo "Unable to create blob for ${FILE}." >&2
+            exit 1
+          fi
+
+          base_tree_sha=$(curl -sSfL \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${api_token}" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/commits/${latest_commit_sha}" \
+            | jq -r '.tree.sha')
+
+          if [[ -z "$base_tree_sha" || "$base_tree_sha" == "null" ]]; then
+            echo "Unable to resolve base tree SHA." >&2
+            exit 1
+          fi
+
+          tree_hash=$(curl -sSfL \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${api_token}" \
+            -d "$(jq -n --arg base "$base_tree_sha" --arg path "$FILE" --arg sha "$blob_sha" \
+              '{base_tree: $base, tree: [{path: $path, mode: "100644", type: "blob", sha: $sha}] }')" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/trees" \
+            | jq -r '.sha')
+
+          if [[ -z "$tree_hash" || "$tree_hash" == "null" ]]; then
+            echo "Unable to create tree for ${FILE}." >&2
+            exit 1
+          fi
+
+          # Create a new commit with the updated tree
+          author_name="${APP_SLUG:-github-actions}[bot]"
+          author_email="${author_name}@users.noreply.github.com"
+          user_id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)
+          commit_message=$'chore: refresh tool hashes\n\nSigned-off-by: '"${author_name} <${user_id}+${author_email}>"
+
+          commit=$(curl -sSfL \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${api_token}" \
+            -d "$(jq -n \
+              --arg message "$commit_message" \
+              --arg tree "$tree_hash" \
+              --arg parent "$latest_commit_sha" \
+              '{message: $message, tree: $tree, parents: [$parent]}')" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/commits")
+
+          commit_sha="$(jq -r '.sha' <<< "$commit")"
+
+          if [[ -z "$commit_sha" || "$commit_sha" == "null" ]]; then
+            echo "Commit creation failed; missing commit SHA." >&2
+            exit 1
+          fi
+
+          # Update the reference of the target branch to point to the new commit
+          curl -sSfL --request PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${api_token}" \
+            -d "$(jq -n --arg sha "$commit_sha" '{sha: $sha}')" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/refs/heads/${target_ref}"
+
+          commit_verified="false"
+          for _ in 1 2 3 4 5; do
+            sleep 2
+            commit_verified="$(curl -sSfL \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${api_token}" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/commits/${commit_sha}" \
+              | jq -r '.commit.verification.verified // "false"')"
+            if [[ "${commit_verified}" == "true" ]]; then
+              break
+            fi
+          done
+
+          if [[ "${commit_verified}" != "true" ]]; then
+            RED=$'\033[0;31m'
+            RESET=$'\033[0m'
+            echo "${RED}Commit signature could not be verified.${RESET}" >&2
+            exit 1
+          fi
+
+          GREEN=$'\033[0;32m'
+          RESET=$'\033[0m'
+          echo "${GREEN}Committed and pushed via GitHub API (verified signature).${RESET}"
