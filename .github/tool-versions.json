@@ -6,8 +6,8 @@
       "sha256": "10dab2fd2170b5aa0d5c0673a9a2793304960220b314f6a873bf39c2f08287aa"
     },
     "gh": {
-      "version": "v2.86.0",
-      "sha256": "f3b08bd6a28420cc2229b0a1a687fa25f2b838d3f04b297414c1041ca68103c7"
+      "version": "v2.85.0",
+      "sha256": "5dcc4e282b9c22c0d31c217805976448c966cfc56c20157c78385a8a62c93cf0"
     },
     "jq": {
       "version": "jq-1.8.1",
