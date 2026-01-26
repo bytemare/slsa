@@ -7,7 +7,7 @@
     },
     "gh": {
       "version": "v2.85.0",
-      "sha256": "f3b08bd6a28420cc2229b0a1a687fa25f2b838d3f04b297414c1041ca68103c7"
+      "sha256": "5dcc4e282b9c22c0d31c217805976448c966cfc56c20157c78385a8a62c93cf0"
     },
     "jq": {
       "version": "jq-1.8.1",
