@@ -14,6 +14,13 @@ name: SLSA Build Level 3 Provenance and GitHub Artifact Attestations
 
 on:
   workflow_call:
+
+    ###################################################################
+    #                                                                 #
+    #                         Workflow inputs                         #
+    #                                                                 #
+    ###################################################################
+
     inputs:
       create_release:
         description: >-
@@ -52,64 +59,54 @@ on:
         default: auto
       cdxgen_version:
         description: >-
-          cdxgen version for generic SBOM generation (npm version/tag, leading v ok)
+          cdxgen version override (default: from tool-versions.json)
         type: string
         required: false
-        default: v12.0.0
       node_version:
         description: >-
-          Node.js version for cdxgen (generic SBOM)
+          Node.js version override (default: from tool-versions.json)
         type: string
         required: false
-        default: 24.13.0
       builder_image:
         description: >-
-          Builder image (with digest) used for packaging and rebuild verification
+          Builder image override (default: from tool-versions.json)
         type: string
         required: false
-        default: golang:1.25-bookworm@sha256:51b6b12427dc03451c24f7fc996c43a20e8a8e56f0849dd0db6ff6e9225cc892
       cosign_version:
         description: >-
-          Cosign version for signing/verification
+          Cosign version override (default: from tool-versions.json)
         type: string
         required: false
-        default: v3.0.4
       cosign_sha256:
         description: >-
-          SHA-256 for the cosign Linux binary
+          SHA-256 override for cosign (default: from tool-versions.json)
         type: string
         required: false
-        default: 10dab2fd2170b5aa0d5c0673a9a2793304960220b314f6a873bf39c2f08287aa
       gh_version:
         description: >-
-          GitHub CLI version for VSA emission
+          GitHub CLI version override (default: from tool-versions.json)
         type: string
         required: false
-        default: v2.85.0
       gh_sha256:
         description: >-
-          SHA-256 for the GitHub CLI Linux tarball
+          SHA-256 override for GitHub CLI (default: from tool-versions.json)
         type: string
         required: false
-        default: 5dcc4e282b9c22c0d31c217805976448c966cfc56c20157c78385a8a62c93cf0
       jq_version:
         description: >-
-          jq version for verification helpers
+          jq version override (default: from tool-versions.json)
         type: string
         required: false
-        default: jq-1.8.1
       jq_sha256:
         description: >-
-          SHA-256 for the jq Linux binary
+          SHA-256 override for jq (default: from tool-versions.json)
         type: string
         required: false
-        default: 020468de7539ce70ef1bceaf7cde2e8c4f2ca6c3afb84642aabc5c97d9fc2a0d
       slsa_verifier_version:
         description: >-
-          slsa-verifier version (go install)
+          slsa-verifier version override (default: from tool-versions.json)
         type: string
         required: false
-        default: v2.7.1
       workflow_repo:
         description: >-
           Reusable workflow repository (owner/repo) to fetch helper scripts. This is only useful for
@@ -124,6 +121,12 @@ on:
         type: string
         required: true
 
+###################################################################
+#                                                                 #
+#                  Permissions and concurrency                    #
+#                                                                 #
+###################################################################
+
 permissions: { }
 
 concurrency:
@@ -135,14 +138,128 @@ defaults:
     shell: bash
 
 jobs:
+
+  # ===============================================================
+  # Load tool versions from central config
+  # ===============================================================
+  load_versions:
+    name: Load tool versions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      cosign_version: ${{ steps.resolve.outputs.cosign_version }}
+      cosign_sha256: ${{ steps.resolve.outputs.cosign_sha256 }}
+      gh_version: ${{ steps.resolve.outputs.gh_version }}
+      gh_sha256: ${{ steps.resolve.outputs.gh_sha256 }}
+      jq_version: ${{ steps.resolve.outputs.jq_version }}
+      jq_sha256: ${{ steps.resolve.outputs.jq_sha256 }}
+      slsa_verifier_version: ${{ steps.resolve.outputs.slsa_verifier_version }}
+      cdxgen_version: ${{ steps.resolve.outputs.cdxgen_version }}
+      node_version: ${{ steps.resolve.outputs.node_version }}
+      builder_image: ${{ steps.resolve.outputs.builder_image }}
+    steps:
+      - name: Validate required inputs
+        shell: bash
+        env:
+          INPUT_WORKFLOW_REF: ${{ inputs.workflow_ref }}
+        run: |
+          if [[ -z "$INPUT_WORKFLOW_REF" ]]; then
+            echo "::error title=Missing Required Input::workflow_ref is required. Set it to the same ref used in uses: ...@<ref>"
+            exit 1
+          fi
+
+      - name: Harden Runner
+        uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+
+      - name: Checkout workflow repo
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+        with:
+          repository: ${{ inputs.workflow_repo || 'bytemare/slsa' }}
+          ref: ${{ inputs.workflow_ref }}
+          sparse-checkout: .github/tool-versions.json
+          fetch-depth: 1
+
+      - name: Load and resolve versions
+        id: resolve
+        env:
+          INPUT_COSIGN_VERSION: ${{ inputs.cosign_version }}
+          INPUT_COSIGN_SHA256: ${{ inputs.cosign_sha256 }}
+          INPUT_GH_VERSION: ${{ inputs.gh_version }}
+          INPUT_GH_SHA256: ${{ inputs.gh_sha256 }}
+          INPUT_JQ_VERSION: ${{ inputs.jq_version }}
+          INPUT_JQ_SHA256: ${{ inputs.jq_sha256 }}
+          INPUT_SLSA_VERIFIER_VERSION: ${{ inputs.slsa_verifier_version }}
+          INPUT_CDXGEN_VERSION: ${{ inputs.cdxgen_version }}
+          INPUT_NODE_VERSION: ${{ inputs.node_version }}
+          INPUT_BUILDER_IMAGE: ${{ inputs.builder_image }}
+        run: |
+          set -euo pipefail
+          CONFIG=".github/tool-versions.json"
+
+          # Load from config, allow input overrides
+          cosign_version="${INPUT_COSIGN_VERSION:-$(jq -r '.tools.cosign.version' "$CONFIG")}"
+          cosign_sha256="${INPUT_COSIGN_SHA256:-$(jq -r '.tools.cosign.sha256' "$CONFIG")}"
+          gh_version="${INPUT_GH_VERSION:-$(jq -r '.tools.gh.version' "$CONFIG")}"
+          gh_sha256="${INPUT_GH_SHA256:-$(jq -r '.tools.gh.sha256' "$CONFIG")}"
+          jq_version="${INPUT_JQ_VERSION:-$(jq -r '.tools.jq.version' "$CONFIG")}"
+          jq_sha256="${INPUT_JQ_SHA256:-$(jq -r '.tools.jq.sha256' "$CONFIG")}"
+          slsa_verifier_version="${INPUT_SLSA_VERIFIER_VERSION:-$(jq -r '.tools["slsa-verifier"].version' "$CONFIG")}"
+          cdxgen_version="${INPUT_CDXGEN_VERSION:-$(jq -r '.tools.cdxgen.version' "$CONFIG")}"
+          node_version="${INPUT_NODE_VERSION:-$(jq -r '.tools.node.version' "$CONFIG")}"
+
+          # Build builder_image from components if not overridden
+          if [[ -n "${INPUT_BUILDER_IMAGE:-}" ]]; then
+            builder_image="${INPUT_BUILDER_IMAGE}"
+          else
+            img=$(jq -r '.tools["builder-image"].image' "$CONFIG")
+            tag=$(jq -r '.tools["builder-image"].tag' "$CONFIG")
+            digest=$(jq -r '.tools["builder-image"].digest' "$CONFIG")
+            builder_image="${img}:${tag}@${digest}"
+          fi
+
+          # Output all resolved versions
+          {
+            echo "cosign_version=${cosign_version}"
+            echo "cosign_sha256=${cosign_sha256}"
+            echo "gh_version=${gh_version}"
+            echo "gh_sha256=${gh_sha256}"
+            echo "jq_version=${jq_version}"
+            echo "jq_sha256=${jq_sha256}"
+            echo "slsa_verifier_version=${slsa_verifier_version}"
+            echo "cdxgen_version=${cdxgen_version}"
+            echo "node_version=${node_version}"
+            echo "builder_image=${builder_image}"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Resolved tool versions:"
+          echo "  cosign: ${cosign_version} (sha256: ${cosign_sha256:0:16}...)"
+          echo "  gh: ${gh_version} (sha256: ${gh_sha256:0:16}...)"
+          echo "  jq: ${jq_version} (sha256: ${jq_sha256:0:16}...)"
+          echo "  slsa-verifier: ${slsa_verifier_version}"
+          echo "  cdxgen: ${cdxgen_version}"
+          echo "  node: ${node_version}"
+          echo "  builder-image: ${builder_image}"
+
+  # ===============================================================
+  # Hermetic source packaging (offline, containerized)
+  # ===============================================================
   package_source:
-    # Hermetic packaging job: runs offline in the pinned Go toolchain container.
     name: Package hermetic source
+    needs: load_versions
     if: ${{ inputs.dry_run || github.ref_type == 'tag' }}
     runs-on: ubuntu-latest
-    # Fully containerize to ensure hermetic, consistent environment.
+    timeout-minutes: 15
     container:
-      image: ${{ inputs.builder_image }}
+      image: ${{ needs.load_versions.outputs.builder_image }}
     permissions:
       actions: read
       contents: read
@@ -200,7 +317,7 @@ jobs:
           EXTENDED_METADATA: ${{ inputs.extended_metadata }}
           PACKAGING_LANGUAGE: ${{ inputs.packaging_language }}
           # Persist the builder digest so build.env captures it for downstream verification.
-          SLSA_BUILDER_IMAGE: ${{ inputs.builder_image }}
+          SLSA_BUILDER_IMAGE: ${{ needs.load_versions.outputs.builder_image }}
         run: |
           set -euo pipefail
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -221,14 +338,17 @@ jobs:
             build.env
             verification.json
 
+  # ===============================================================
+  # SBOM generation, attestations, and release publishing
+  # ===============================================================
   sbom_and_release:
-    # Networked follow-up job: consumes packaging artifacts, generates SBOM/attestations.
     name: SBOM + Attest + Publish
-    needs: package_source
+    needs: [load_versions, package_source]
     if: ${{ inputs.dry_run || github.ref_type == 'tag' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     container:
-      image: ${{ inputs.builder_image }}
+      image: ${{ needs.load_versions.outputs.builder_image }}
     permissions:
       actions: read
       attestations: write
@@ -338,11 +458,12 @@ jobs:
       - name: Install cosign
         if: ${{ !inputs.dry_run && inputs.sign_blobs }}
         env:
-          COSIGN_VERSION: ${{ inputs.cosign_version }}
-          COSIGN_SHA256: ${{ inputs.cosign_sha256 }}
+          COSIGN_VERSION: ${{ needs.load_versions.outputs.cosign_version }}
+          COSIGN_SHA256: ${{ needs.load_versions.outputs.cosign_sha256 }}
         run: |
           set -euo pipefail
-          curl -sSfL --proto '=https' --proto-redir '=https' --max-redirs 1 \
+          curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
+            --proto '=https' --proto-redir '=https' --max-redirs 1 \
             -o cosign "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
           echo "${COSIGN_SHA256}  cosign" | sha256sum -c -
           install -m 0755 cosign /usr/local/bin/cosign
@@ -351,12 +472,12 @@ jobs:
         if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
         uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238
         with:
-          node-version: ${{ inputs.node_version }}
+          node-version: ${{ needs.load_versions.outputs.node_version }}
 
       - name: Generate CycloneDX SBOM (generic)
         if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
         env:
-          CDXGEN_VERSION: ${{ inputs.cdxgen_version }}
+          CDXGEN_VERSION: ${{ needs.load_versions.outputs.cdxgen_version }}
         run: |
           set -euo pipefail
           version="${CDXGEN_VERSION:-latest}"
@@ -434,7 +555,7 @@ jobs:
         if: ${{ inputs.dry_run }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: dryrun-${{ needs.package_source.outputs.artifact_filename }}
+          name: dryrun-${{ needs.package_source.outputs.artifact_filename }}-${{ github.run_id }}
           if-no-files-found: warn
           path: |
             ${{ steps.paths.outputs.artifact_path }}
@@ -447,11 +568,15 @@ jobs:
             slsa-workflow/scripts/package-source.sh
             package/verification.json
 
+  # ===============================================================
+  # Post-release verification and VSA emission
+  # ===============================================================
   verify_release_vsa:
     name: Verify release (full + reproduce) & emit VSA
     if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
-    needs: [sbom_and_release, provenance_slsa]
+    needs: [load_versions, sbom_and_release, provenance_slsa]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
       id-token: write
@@ -510,25 +635,28 @@ jobs:
 
       - name: Install verification tools
         env:
-          COSIGN_VERSION: ${{ inputs.cosign_version }}
-          COSIGN_SHA256: ${{ inputs.cosign_sha256 }}
-          GH_VERSION: ${{ inputs.gh_version }}
-          GH_SHA256: ${{ inputs.gh_sha256 }}
-          JQ_VERSION: ${{ inputs.jq_version }}
-          JQ_SHA256: ${{ inputs.jq_sha256 }}
-          SLSA_VERIFIER_VERSION: ${{ inputs.slsa_verifier_version }}
+          COSIGN_VERSION: ${{ needs.load_versions.outputs.cosign_version }}
+          COSIGN_SHA256: ${{ needs.load_versions.outputs.cosign_sha256 }}
+          GH_VERSION: ${{ needs.load_versions.outputs.gh_version }}
+          GH_SHA256: ${{ needs.load_versions.outputs.gh_sha256 }}
+          JQ_VERSION: ${{ needs.load_versions.outputs.jq_version }}
+          JQ_SHA256: ${{ needs.load_versions.outputs.jq_sha256 }}
+          SLSA_VERIFIER_VERSION: ${{ needs.load_versions.outputs.slsa_verifier_version }}
         run: |
           set -euo pipefail
-          curl -sSfL --proto '=https' --proto-redir '=https' --max-redirs 1 \
+          curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
+            --proto '=https' --proto-redir '=https' --max-redirs 1 \
             -o cosign "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
           echo "${COSIGN_SHA256}  cosign" | sha256sum -c -
           install -m 0755 cosign /usr/local/bin/cosign
-          curl -sSfL --proto '=https' --proto-redir '=https' --max-redirs 1 \
+          curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
+            --proto '=https' --proto-redir '=https' --max-redirs 1 \
             -o gh.tgz "https://github.com/cli/cli/releases/download/${GH_VERSION}/gh_${GH_VERSION#v}_linux_amd64.tar.gz"
           echo "${GH_SHA256}  gh.tgz" | sha256sum -c -
           tar -xzf gh.tgz
           install -m 0755 "gh_${GH_VERSION#v}_linux_amd64/bin/gh" /usr/local/bin/gh
-          curl -sSfL --proto '=https' --proto-redir '=https' --max-redirs 1 \
+          curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
+            --proto '=https' --proto-redir '=https' --max-redirs 1 \
             -o jq "https://github.com/jqlang/jq/releases/download/${JQ_VERSION}/jq-linux-amd64"
           echo "${JQ_SHA256}  jq" | sha256sum -c -
           install -m 0755 jq /usr/local/bin/jq
@@ -538,10 +666,10 @@ jobs:
       - name: Verify release (reproduce)
         env:
           GH_TOKEN: ${{ github.token }}
+          WORKFLOW_REPO: ${{ steps.workflow_source.outputs.repo }}
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
-          WORKFLOW_REPO="${{ steps.workflow_source.outputs.repo }}"
           ./slsa-workflow/verify-release.sh \
             --repo "${GITHUB_REPOSITORY}" \
             --tag "${TAG}" \
@@ -552,11 +680,11 @@ jobs:
         env:
           COSIGN_EXPERIMENTAL: 1
           GH_TOKEN: ${{ github.token }}
+          WORKFLOW_REPO: ${{ steps.workflow_source.outputs.repo }}
+          WORKFLOW_REF: ${{ steps.workflow_source.outputs.ref }}
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
-          WORKFLOW_REPO="${{ steps.workflow_source.outputs.repo }}"
-          WORKFLOW_REF="${{ steps.workflow_source.outputs.ref }}"
           WORKFLOW_VERIFIER_ID="https://github.com/${WORKFLOW_REPO}/.github/workflows/slsa.yaml@${WORKFLOW_REF}"
           POLICY_URI="https://github.com/${WORKFLOW_REPO}/blob/${WORKFLOW_REF}/verify-release.sh"
           VERIFY_SCRIPT_SHA=$(sha256sum slsa-workflow/verify-release.sh | awk '{print $1}')
@@ -623,15 +751,19 @@ jobs:
       emit_vsa: false
       workflow_repo: ${{ inputs.workflow_repo }}
       workflow_ref: ${{ inputs.workflow_ref }}
+
+  # ===============================================================
+  # Reproducibility check (SLSA Level 4 preparation)
+  # ===============================================================
   rebuild_verify:
-    # Purpose: independently re-run packaging to assert determinism (SLSA Level 4).
     name: Rebuild & Verify Determinism
     if: ${{ github.ref_type == 'tag' && !inputs.dry_run }}
-    needs: package_source
+    needs: [load_versions, package_source]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     container:
       # Mirror the hermetic builder so the rebuild check uses identical bits.
-      image: ${{ inputs.builder_image }}
+      image: ${{ needs.load_versions.outputs.builder_image }}
     permissions:
       contents: read
     steps:
@@ -681,7 +813,7 @@ jobs:
           EXTENDED_METADATA: ${{ inputs.extended_metadata }}
           PACKAGING_LANGUAGE: ${{ inputs.packaging_language }}
           # The rebuild must mirror the original builder image to satisfy L4 reproducibility.
-          SLSA_BUILDER_IMAGE: ${{ inputs.builder_image }}
+          SLSA_BUILDER_IMAGE: ${{ needs.load_versions.outputs.builder_image }}
         run: |
           set -euo pipefail
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -704,6 +836,9 @@ jobs:
           fi
           echo 'Rebuild determinism verified.'
 
+  # ===============================================================
+  # SLSA Level 3 provenance generation
+  # ===============================================================
   provenance_slsa:
     name: SLSA Build Level 3 Provenance
     if: ${{ !inputs.dry_run && github.ref_type == 'tag' }}

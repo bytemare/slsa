@@ -8,17 +8,27 @@
 # https://spdx.org/licenses/MIT.html
 #
 
+# This workflow updates SHA256 hashes in .github/tool-versions.json when
+# tool versions are bumped (e.g., by Renovate). Since the config file is
+# not a workflow file, only `contents: write` permission is needed—no
+# special `workflows` permission required.
+
 name: Refresh Tool Hashes
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
-      - .github/workflows/slsa.yaml
-      - .github/workflows/verify.yaml
-      - .github/renovate.json
+      - .github/tool-versions.json
       - scripts/update-tool-versions.sh
   workflow_dispatch:
+
+    ###################################################################
+    #                                                                 #
+    #                      Manual dispatch inputs                     #
+    #                                                                 #
+    ###################################################################
+
     inputs:
       use_latest:
         description: 'Use latest versions for all tools'
@@ -40,14 +50,18 @@ on:
 permissions: {}
 
 jobs:
+
+  # ===============================================================
+  # Download tools and update SHA256 hashes
+  # ===============================================================
   refresh:
     if: >-
       ${{
         github.event_name == 'workflow_dispatch' ||
-        (!github.event.pull_request.head.repo.fork &&
-         (github.actor == 'renovate[bot]' || github.actor == 'renovate-bot' || github.actor == 'renovate'))
+        (github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork)
       }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
@@ -70,6 +84,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: true
 
       - name: Checkout branch
         if: ${{ github.event_name == 'workflow_dispatch' }}
@@ -77,10 +92,12 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: true
 
       - name: Update tool hashes (dispatch)
         if: ${{ github.event_name == 'workflow_dispatch' }}
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COSIGN_VERSION: ${{ github.event.inputs.use_latest == 'true' && 'latest' || github.event.inputs.cosign_version }}
           GH_VERSION: ${{ github.event.inputs.use_latest == 'true' && 'latest' || github.event.inputs.gh_version }}
           JQ_VERSION: ${{ github.event.inputs.use_latest == 'true' && 'latest' || github.event.inputs.jq_version }}
@@ -91,35 +108,35 @@ jobs:
 
       - name: Update tool hashes (PR)
         if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           bash scripts/update-tool-versions.sh
 
-      - name: Commit updates
+      - name: Commit and push updates
         env:
-          RENOVATE_WORKFLOWS: ${{ secrets.RENOVATE_WORKFLOWS }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
-          if git diff --quiet; then
+          if git diff --quiet .github/tool-versions.json; then
             echo "No changes to commit."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/workflows/slsa.yaml .github/workflows/verify.yaml
+          git add .github/tool-versions.json
           git commit -m "chore: refresh tool hashes"
-          if [[ -z "${RENOVATE_WORKFLOWS:-}" ]]; then
-            echo "Missing RENOVATE_WORKFLOWS token for push." >&2
-            exit 1
-          fi
+
           if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
             target_ref="${PR_HEAD_REF}"
           else
             target_ref="${GITHUB_REF_NAME}"
           fi
+
           if [[ -z "$target_ref" ]]; then
             echo "Unable to determine target ref for push." >&2
             exit 1
           fi
-          git push "https://x-access-token:${RENOVATE_WORKFLOWS}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${target_ref}"
+
+          git push origin "HEAD:${target_ref}"

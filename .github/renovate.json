@@ -12,44 +12,44 @@
   ],
   "regexManagers": [
     {
-      "fileMatch": ["^\\.github/workflows/slsa\\.yaml$", "^\\.github/workflows/verify\\.yaml$"],
-      "matchStrings": ["cosign_version:\\s*\\n[\\s\\S]*?\\n\\s*default:\\s*(?<currentValue>[^\\s]+)"],
+      "fileMatch": ["^\\.github/tool-versions\\.json$"],
+      "matchStrings": ["\"cosign\":\\s*\\{[^}]*\"version\":\\s*\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "sigstore/cosign",
       "datasourceTemplate": "github-releases"
     },
     {
-      "fileMatch": ["^\\.github/workflows/slsa\\.yaml$"],
-      "matchStrings": ["gh_version:\\s*\\n[\\s\\S]*?\\n\\s*default:\\s*(?<currentValue>[^\\s]+)"],
+      "fileMatch": ["^\\.github/tool-versions\\.json$"],
+      "matchStrings": ["\"gh\":\\s*\\{[^}]*\"version\":\\s*\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "cli/cli",
       "datasourceTemplate": "github-releases"
     },
     {
-      "fileMatch": ["^\\.github/workflows/slsa\\.yaml$"],
-      "matchStrings": ["jq_version:\\s*\\n[\\s\\S]*?\\n\\s*default:\\s*(?<currentValue>[^\\s]+)"],
+      "fileMatch": ["^\\.github/tool-versions\\.json$"],
+      "matchStrings": ["\"jq\":\\s*\\{[^}]*\"version\":\\s*\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "jqlang/jq",
       "datasourceTemplate": "github-releases"
     },
     {
-      "fileMatch": ["^\\.github/workflows/slsa\\.yaml$", "^\\.github/workflows/verify\\.yaml$"],
-      "matchStrings": ["slsa_verifier_version:\\s*\\n[\\s\\S]*?\\n\\s*default:\\s*(?<currentValue>[^\\s]+)"],
+      "fileMatch": ["^\\.github/tool-versions\\.json$"],
+      "matchStrings": ["\"slsa-verifier\":\\s*\\{[^}]*\"version\":\\s*\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "slsa-framework/slsa-verifier",
       "datasourceTemplate": "github-releases"
     },
     {
-      "fileMatch": ["^\\.github/workflows/slsa\\.yaml$"],
-      "matchStrings": ["cdxgen_version:\\s*\\n[\\s\\S]*?\\n\\s*default:\\s*(?<currentValue>[^\\s]+)"],
+      "fileMatch": ["^\\.github/tool-versions\\.json$"],
+      "matchStrings": ["\"cdxgen\":\\s*\\{[^}]*\"version\":\\s*\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "@cyclonedx/cdxgen",
       "datasourceTemplate": "npm"
     },
     {
-      "fileMatch": ["^\\.github/workflows/slsa\\.yaml$"],
-      "matchStrings": ["node_version:\\s*\\n[\\s\\S]*?\\n\\s*default:\\s*(?<currentValue>[^\\s]+)"],
+      "fileMatch": ["^\\.github/tool-versions\\.json$"],
+      "matchStrings": ["\"node\":\\s*\\{[^}]*\"version\":\\s*\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "node",
-      "datasourceTemplate": "node"
+      "datasourceTemplate": "node-version"
     },
     {
-      "fileMatch": ["^\\.github/workflows/slsa\\.yaml$", "^\\.github/workflows/verify\\.yaml$"],
-      "matchStrings": ["builder_image:\\s*\\n[\\s\\S]*?\\n\\s*default:\\s*golang:(?<currentValue>[^\\s]+)"],
+      "fileMatch": ["^\\.github/tool-versions\\.json$"],
+      "matchStrings": ["\"builder-image\":\\s*\\{[^}]*\"tag\":\\s*\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "golang",
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"

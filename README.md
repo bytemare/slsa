@@ -1,8 +1,9 @@
 # SLSA Level 3 Release and Verification Workflows
+
 [![SLSA 3](https://slsa.dev/images/gh-badge-level3.svg)](https://slsa.dev)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/bytemare/slsa/badge)](https://scorecard.dev/viewer/?uri=github.com/bytemare/slsa)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/11820/badge)](https://www.bestpractices.dev/projects/11820)
-
+[![Release](https://github.com/bytemare/slsa/actions/workflows/wf-release.yaml/badge.svg)](https://github.com/bytemare/slsa/actions/workflows/wf-release.yaml)
 
 This project provides a set of tools to help software producers build and publish SLSA Level 3-compliant releases, and for consumers to verify them. They also gather reproducibility evidence to ease adoption of the upcoming SLSA Level 4 guidance once that level is formally published.
 - Reusable GitHub Actions Workflows for packaging and verifying releases
@@ -10,7 +11,45 @@ This project provides a set of tools to help software producers build and publis
 
 Building on the [SLSA generator](https://github.com/slsa-framework/slsa-github-generator) and [verifier](https://github.com/slsa-framework/slsa-verifier), and the [Sigstore](https://sigstore.dev/) ecosystem, these integrated workflows combine full producer and consumer flows with minimal setup.
 
-It provides:
+---
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Supported Languages](#supported-languages)
+- [Release - How to Use the Workflow](#release---how-to-use-the-workflow)
+- [Verify](#verify)
+- [SLSA Alignment](#slsa-alignment)
+- [Supply Chain Security](#supply-chain-security)
+- [Versioning and Compatibility](#versioning-and-compatibility)
+- [Additional Resources](#additional-resources)
+- [License](#license)
+
+---
+
+## Quick Start
+
+```yaml
+jobs:
+  release:
+    uses: bytemare/slsa/.github/workflows/slsa.yaml@<pinned-sha>
+    with:
+      workflow_ref: <pinned-sha>
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      actions: read
+```
+
+For detailed configuration options, see [Release - How to Use the Workflow](#release---how-to-use-the-workflow).
+
+---
+
+## Features
+
 - 🔒 **SLSA Level 3 Compliance** - Provenance via the official [slsa-github-generator](https://github.com/slsa-framework/slsa-github-generator), plus deterministic packaging and hermetic reproducible builds (to the extent of what GitHub provides)
 - 🧭 **Level 4 Preparation** - Additional reproducibility materials to support an eventual Level 4 definition (Level 4 is not fully defined, yet)
 - 📦 **SBOM** - [CycloneDX Software Bill of Materials](https://cyclonedx.org/specification/overview/)
@@ -23,13 +62,34 @@ It provides:
 
 ---
 
-## Supported languages
+## Prerequisites
+
+**For release workflow:** None required — tools are installed at runtime with SHA256 hash verification.
+
+**For local verification (`verify-release.sh`):**
+
+| Tool | Required For | Installation |
+| ------ | -------------- | -------------- |
+| `curl`, `jq`, `sha256sum` | All modes | Usually pre-installed |
+| `cosign` | Signature verification | [Install guide](https://docs.sigstore.dev/cosign/system_config/installation/) |
+| `gh` | GitHub API access (outside Actions) | [Install guide](https://cli.github.com/) |
+| `slsa-verifier` | `--mode full` | [Install guide](https://github.com/slsa-framework/slsa-verifier#installation) |
+| `docker` | `--mode reproduce` | [Install guide](https://docs.docker.com/get-docker/) |
+
+```bash
+# Show all options
+./verify-release.sh --help
+```
+
+---
+
+## Supported Languages
 
 Source packaging works for any repo. Go modules receive extra metadata (like `go env`) and use a Go-specific SBOM generator.
 
 ---
 
-## Release - how to use the workflow
+## Release - How to Use the Workflow
 
 **Configuration:**
 
@@ -124,8 +184,7 @@ chmod +x verify-release.sh
   and SBOM) fit together correctly, providing a much higher level of confidence in the integrity and
   authenticity of the release.
 - **reproduce** - Hermetic rebuild using the `SLSA_BUILDER_IMAGE` recorded in `build.env` (defaults to
-  `golang:1.25-bookworm@sha256:51b6b12427dc03451c24f7fc996c43a20e8a8e56f0849dd0db6ff6e9225cc892`), yielding
-  independent evidence for future Level 4 expectations.
+  `golang:1.25-bookworm@sha256:...`), yielding independent evidence for future Level 4 expectations.
 
 The script automatically:
 - Checks for required tools (curl, jq, cosign, sha256sum, gh for attestations, slsa-verifier for full mode, docker for reproduce mode)
@@ -177,7 +236,7 @@ The following table maps the current [SLSA v1.2-rc1](https://slsa.dev/spec/v1.2-
 > ⚠️ **Disclaimer:** While this workflow implements the controls listed below, achieving SLSA compliance also depends on organizational policies and practices beyond the scope of this automation, like mandatory reviews from at least one other person. Users should ensure that their overall processes align with these SLSA requirements.
 
 | SLSA v1.2 Requirement | Sub-requirement                                        | Compliant | Evidence                                                                                                                                                                                                    |
-|-----------------------|--------------------------------------------------------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| --------------------- | ------------------------------------------------------ | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Source**            |                                                        |           |                                                                                                                                                                                                             |
 | Version Control       | All source code is version controlled.                 | Yes       | The project is hosted on GitHub.                                                                                                                                                                            |
 | Verified History      | Commits are signed.                                    | Yes       | The project enforces signed commits.                                                                                                                                                                        |
@@ -201,6 +260,44 @@ The following table maps the current [SLSA v1.2-rc1](https://slsa.dev/spec/v1.2-
 | Security              | The build service meets security requirements.         | Yes       | GitHub Actions is a hardened build service.                                                                                                                                                                 |
 | Access                | The build service has limited access to secrets.       | Yes       | The workflow uses minimal permissions.                                                                                                                                                                      |
 | Superusers            | The number of superusers is minimized.                 | Yes       | Access to the repository and secrets is restricted.                                                                                                                                                         |
+
+---
+
+## Supply Chain Security
+
+This project implements multiple layers of supply chain hardening:
+
+### Tool Version and Hash Pinning
+
+All external tools used in CI/CD workflows (cosign, gh, jq, slsa-verifier) are pinned to specific versions **and** verified against SHA256 checksums before execution. This defends against:
+
+- **Version tag manipulation** — Even if an attacker compromises a release tag, the hash verification will fail
+- **Binary substitution attacks** — Downloaded binaries are verified against known-good hashes before use
+- **Supply chain injection** — No tool can execute without matching its recorded fingerprint
+
+Tool versions and hashes are maintained in a single source of truth: [.github/tool-versions.json](.github/tool-versions.json).
+
+### Automated Hash Updates
+
+When [Renovate](https://docs.renovatebot.com/) detects a new tool version, it opens a PR updating the version in `tool-versions.json`. A companion workflow automatically:
+
+1. Downloads the new binary
+2. Computes its SHA256 hash
+3. Updates `tool-versions.json` with the new hash
+4. Commits the change to the PR
+
+This keeps hashes synchronized with versions while maintaining full auditability—all hash changes are visible in PR diffs.
+
+### Industry Alignment
+
+This approach follows patterns used by security-focused projects:
+
+| Practice | This Project | kubernetes/kubernetes | google/oss-fuzz | slsa-framework |
+| ---------- | ------------- | ---------------------- | ----------------- | ---------------- |
+| Version pinning | ✅ | ✅ | ✅ | ✅ |
+| SHA256 hash verification | ✅ | ✅ (Docker images) | ✅ | ✅ (runtime) |
+| Central version config | ✅ `tool-versions.json` | VERSION files | ENV in Dockerfile | Workflow outputs |
+| Automated updates | ✅ Renovate + hash workflow | Manual | Manual | Renovate |
 
 ---
 
