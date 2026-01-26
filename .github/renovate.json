@@ -3,6 +3,9 @@
   "extends": [
     "github>bytemare/renovate-config"
   ],
+  "gitIgnoredAuthors": [
+    "41898282+github-actions[bot]@users.noreply.github.com"
+  ],
   "packageRules": [
     {
       "matchManagers": ["github-actions"],
