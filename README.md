@@ -69,7 +69,7 @@ For detailed configuration options, see [Release - How to Use the Workflow](#rel
 **For local verification (`verify-release.sh`):**
 
 | Tool | Required For | Installation |
-|------|--------------|--------------|
+| ------ | -------------- | -------------- |
 | `curl`, `jq`, `sha256sum` | All modes | Usually pre-installed |
 | `cosign` | Signature verification | [Install guide](https://docs.sigstore.dev/cosign/system_config/installation/) |
 | `gh` | GitHub API access (outside Actions) | [Install guide](https://cli.github.com/) |
@@ -293,7 +293,7 @@ This keeps hashes synchronized with versions while maintaining full auditability
 This approach follows patterns used by security-focused projects:
 
 | Practice | This Project | kubernetes/kubernetes | google/oss-fuzz | slsa-framework |
-|----------|-------------|----------------------|-----------------|----------------|
+| ---------- | ------------- | ---------------------- | ----------------- | ----------------|
 | Version pinning | ✅ | ✅ | ✅ | ✅ |
 | SHA256 hash verification | ✅ | ✅ (Docker images) | ✅ | ✅ (runtime) |
 | Central version config | ✅ `tool-versions.json` | VERSION files | ENV in Dockerfile | Workflow outputs |
