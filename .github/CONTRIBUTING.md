@@ -1,45 +1,62 @@
-# How to contribute
+# Contributing
 
-## Did you find a bug? 🐞
+Thanks for investing time in improving this module!
 
-* 🔎 Please ensure your findings have not already been reported by searching on the project repository under [Issues](https://github.com/bytemare/slsa).
-* If you think your findings can be complementary to an existing issue, don't hesitate to join the conversation 😃☕
-* If there's no issue addressing the problem, [open a new one](https://github.com/bytemare/slsa/issues/new).
-  Please be clear in the title and description, and add relevant information. Bonus points if you provide a
-  **code sample** and everything needed to reproduce the issue when expected behaviour is not occurring.
-* If possible, use the relevant issue templates.
+## 1. Before You Start
 
-## Do you have a fix?
+- Review the [Code of Conduct](CODE_OF_CONDUCT.md). Participating implies acceptance of its terms.
+- Search existing [issues](https://github.com/bytemare/slsa/issues) and pull requests to avoid duplicating work. For substantial or breaking changes, open an issue first so we can agree on scope.
+- Familiarise yourself with the architecture and testing expectations.
 
-🎉 That's awesome! Pull requests are welcome!
+## 2. Development Environment
 
-* Please [open an issue](https://github.com/bytemare/slsa) beforehand, so we can discuss this.
-* Fork this repo from `main`, and ensure your fork is up-to-date with it when submitting the PR.
-* If your changes impact the documentation, please update it accordingly.
-* If you added code that impact tests, please add tests with relevant coverage and test cases. Bonus points for fuzzing.
-* 🛠️ Make sure the test suite passes.
+- Bash shell and git
 
-If your changes might have an impact on performance, please benchmark your code and measure the impact, share the
-results and the tests that lead to these results.
+## 3. Workflow and Branching
 
-Please note that changes that are purely cosmetic and do not add anything substantial to the stability, functionality, or testability of the project may not be accepted.
+1. Fork the repository and create topic branches from `main` (for example `feat/add-something`, `docs/fix-README`).
+2. Keep changes focused. Separate refactors, dependency bumps, and feature work into distinct pull requests.
+3. Reference related issues in your branch description or pull request.
 
-## Coding Convention
+## 4. Commit Standards
 
-This project tries to be as Go idiomatic as possible. Conventions from [Effective Go](https://golang.org/doc/effective_go) apply here. Tests use a very opinionated linting configuration that you should use before committing to your changes.
+- Follow [Conventional Commits](https://www.conventionalcommits.org/) for clear history (`feat:`, `fix:`, `docs:`, `test:`, `chore:` and so on).
+- Every commit must include a `Signed-off-by` trailer to satisfy the [Developer Certificate of Origin](https://developercertificate.org/). Use `git commit -s` to add it automatically.
+- Commit only what you have built and tested locally. Avoid large unrelated changes in a single commit.
+- Sign your commits using GPG or SSH.
 
-## Governance Model
+## 5. Quality Checks
 
-This project follows the [Benevolent Dictator Governance Model](http://oss-watch.ac.uk/resources/benevolentdictatorgovernancemodel) where the project owner and lead makes all final decisions.
+1. All required checks must pass in CI before merging. These include linting, tests, and vulnerability scans.
+3. Update documentation when behaviour or APIs change. Architecture or security changes should be reflected in the relevant `docs/` files.
+4. **For user-facing changes**, add an entry to [CHANGELOG.md](../CHANGELOG.md) under `[Unreleased]` describing what changed.
 
-## Licence
+## 6. Opening a Pull Request
 
-By contributing to this project, you agree that your contributions will be licensed under the project's [License](https://github.com/bytemare/slsa/blob/main/LICENSE).
+1. Push your branch and open a PR against `main`.
+2. Fill out the pull request template, including the commands you ran and any follow-up tasks.
+3. Keep the description focused on why the change is necessary and what risks were considered. Link issues or discussions for additional context.
+4. If the change affects documentation, link to the updated files in the PR body so reviewers can verify rendering quickly.
 
-All contributions (including pull requests) must agree to the
-[Developer Certificate of Origin (DCO) version 1.1](https://developercertificate.org). It states that the
-contributor has the right to submit the patch for inclusion into the project. Simply submitting a contribution
-implies this agreement, however, please include the "Signed-off-by" git tag in every commit (this tag is a
-conventional way to confirm that you agree to the DCO).
+## 7. Review Expectations
 
-Thanks! :heart:
+- Expect at least one maintainer review. Response times are usually within a few business days. Comment if you need a quicker turnaround.
+- Be responsive to feedback. If discussion stalls, summarise remaining concerns so the maintainer can make a decision.
+- Maintainers may close stale PRs after reasonable attempts to coordinate.
+
+## 8. Issue Guidance
+
+- Include reproduction steps, expected versus actual behaviour, and environment details (version, OS/arch).
+- For vulnerabilities, use the private GitHub Security Advisory form rather than public issues.
+- Feature requests should describe the use case and, when possible, sketch the desired API.
+
+## 9. Releases and Post-Merge Tasks
+
+- Maintainers follow the process in [docs/releasing.md](../docs/releasing.md). Contributors assisting with release notes should provide changelog entries and highlight migration steps.
+- After a change lands, watch for CI status and respond quickly if regressions are reported by downstream users.
+
+## 10. Further Reading
+
+- Governance model: [docs/governance.md](../docs/governance.md)
+
+Thank you for helping keep `bytemare/slsa` reliable and secure!

@@ -280,7 +280,7 @@ jobs:
 
 For interactive runs, trigger `.github/workflows/wf-verify.yaml`. It uses same reusable verifier with sensible defaults.
 
-For the complete manual verification and reproducibility walkthrough, see [VERIFICATION_AND_REPRODUCIBILITY_GUIDE.md](VERIFICATION_AND_REPRODUCIBILITY_GUIDE.md).
+For the complete manual verification and reproducibility walkthrough, see [VERIFICATION_AND_REPRODUCIBILITY_GUIDE.md](./docs/VERIFICATION_AND_REPRODUCIBILITY_GUIDE.md).
 
 ---
 
