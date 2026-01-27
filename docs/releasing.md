@@ -14,7 +14,7 @@ This project publishes Reusable GitHub Workflows and SLSA verification tooling f
    - Verify README snippets and policy docs still apply.
 
 3. **Run validation locally**
-   
+
    Run the validation suite as described in [CONTRIBUTING.md §5](../.github/CONTRIBUTING.md#5-quality-checks).
 
 4. **Tag the release**
