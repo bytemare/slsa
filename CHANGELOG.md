@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 For releases prior to this changelog, see [GitHub Releases](https://github.com/bytemare/ecc/releases).
 
-## 0.1.0 - 27/01/2026
+## v0.1.0 - 27/01/2026
 
 ### Documentation
 - Added governance and releasing documents to docs/
