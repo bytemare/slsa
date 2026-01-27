@@ -10,5 +10,5 @@ For releases prior to this changelog, see [GitHub Releases](https://github.com/b
 ## 0.1.0 - 27/01/2026
 
 ### Documentation
-- Added governance, releasing, and roadmap documents.
+- Added governance and releasing documents to docs/
 - Upgraded Code of Conduct to Contributor Covenant 3.0.
