@@ -42,7 +42,7 @@
 # ===========================================================================
 # Script Metadata
 # ===========================================================================
-readonly SCRIPT_VERSION="1.0.0"
+readonly SCRIPT_VERSION="0.1.0"
 SCRIPT_NAME="$(basename "$0")"
 readonly SCRIPT_NAME
 
