@@ -161,14 +161,22 @@ jobs:
       builder_image: ${{ steps.resolve.outputs.builder_image }}
     steps:
       - name: Validate required inputs
+        id: validate
         shell: bash
         env:
           INPUT_WORKFLOW_REF: ${{ inputs.workflow_ref }}
+          INPUT_WORKFLOW_REPO: ${{ inputs.workflow_repo }}
+          GITHUB_OUTPUT_FILE: ${{ github.output }}
         run: |
           if [[ -z "$INPUT_WORKFLOW_REF" ]]; then
             echo "::error title=Missing Required Input::workflow_ref is required. Set it to the same ref used in uses: ...@<ref>"
             exit 1
           fi
+          
+          # Export validated values for use in checkout
+          workflow_repo="${INPUT_WORKFLOW_REPO:-bytemare/slsa}"
+          echo "workflow_repo=${workflow_repo}" >> "$GITHUB_OUTPUT_FILE"
+          echo "workflow_ref=${INPUT_WORKFLOW_REF}" >> "$GITHUB_OUTPUT_FILE"
 
       - name: Harden Runner
         uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76
@@ -183,8 +191,8 @@ jobs:
       - name: Checkout workflow repo
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
-          repository: ${{ inputs.workflow_repo || 'bytemare/slsa' }}
-          ref: ${{ inputs.workflow_ref }}
+          repository: ${{ steps.validate.outputs.workflow_repo }}
+          ref: ${{ steps.validate.outputs.workflow_ref }}
           sparse-checkout: .github/tool-versions.json
           fetch-depth: 1
 
