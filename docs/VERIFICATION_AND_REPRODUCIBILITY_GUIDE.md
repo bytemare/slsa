@@ -102,7 +102,7 @@ jobs:
       workflow_ref: <pinned-commit>
 ```
 
-#### Automatic Verifier Metadata
+### Automatic Verifier Metadata
 
 When using the verification workflow with VSA emission (`emit_vsa: true`), the following metadata is **automatically embedded** in the Verification Summary Attestation for traceability:
 
@@ -133,7 +133,8 @@ jobs:
 ```
 
 The resulting VSA will contain:
-```
+
+```text
 workflow_ref=v1.0.0
 script_sha=abc123...
 environment=production
