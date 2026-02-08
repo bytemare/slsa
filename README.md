@@ -11,6 +11,8 @@
 
 ## Why This Project?
 
+> **SLSA v1.2 Note:** This project implements **SLSA Build Track Level 3** requirements. The SLSA v1.2 specification defines separate Build Track and Source Track levels. While this workflow operates on GitHub and benefits from GitHub's source control features, it focuses on Build Track compliance and does not explicitly claim Source Track levels.
+
 The SLSA ecosystem provides excellent building blocks — [slsa-github-generator](https://github.com/slsa-framework/slsa-github-generator) for provenance, [cosign](https://github.com/sigstore/cosign) for signing, [slsa-verifier](https://github.com/slsa-framework/slsa-verifier) for validation. But achieving *complete* SLSA compliance requires integrating these pieces into a cohesive workflow that handles:
 
 - **Deterministic source packaging** — reproducible archives with stable timestamps
@@ -253,11 +255,22 @@ The script automatically:
 
 **Need a signed verification summary?**
 
-Combine `--mode full` with `--emit-vsa <file> --verifier-id <uri>` (plus optional policy metadata) to generate a [Verification Summary Attestation](https://slsa.dev/spec/v1.1/verification_summary).
+Combine `--mode full` with `--emit-vsa <file> --verifier-id <uri>` (plus optional policy metadata) to generate a [Verification Summary Attestation](https://slsa.dev/spec/v1.2/verification_summary).
 
 **Why does VSA generation live in `verify-release.sh`?**
 
 VSA production happens *after* artifact publication so a verifier role, separate from the packager, can download the release assets, run all policy checks (full mode), and sign the result. Keeping verification outside `scripts/package-source.sh` preserves this independence.
+
+**Policy as Executable Code**
+
+Unlike declarative policy languages (OPA Rego, CEL), this project uses the verification script itself as the policy. When emitting VSAs, the `policy.uri` field points to `verify-release.sh` and includes its SHA-256 digest. This approach offers several advantages:
+
+- **No implementation gap** — The policy document *is* the implementation that was executed
+- **Maximum transparency** — Auditors can read the exact checks performed without abstraction layers
+- **Reproducible verification** — Same script + same inputs = same results
+- **Self-documenting** — The code documents what "SLSA Build Track Level 3" means for this project
+
+The SLSA VSA specification is intentionally flexible about policy format. Executable verification scripts are a common pattern in supply chain security (see also: in-toto layouts, TUF threshold signing) and are particularly well-suited for sequential verification workflows.
 
 ### Run in GitHub Actions
 
@@ -272,13 +285,24 @@ jobs:
       tag: <tag>
       mode: full,reproduce   # run multiple modes sequentially
       emit_vsa: true         # optional – uploads a signed verification summary (requires full)
+      upload_to_release: true # optional – upload VSA to GitHub release (requires contents: write)
       verifier_id: <https://example.com/trusted-verifier> # optional – URI to identify the verifier in the VSA
     permissions:
-      contents: read
+      contents: read         # use contents: write if upload_to_release is true
       id-token: write
 ```
 
-For interactive runs, trigger `.github/workflows/wf-verify.yaml`. It uses same reusable verifier with sensible defaults.
+**Verifier Metadata**: The workflow automatically embeds `workflow_ref` and `script_sha` in the VSA for traceability. You can optionally add custom metadata for compliance tracking:
+
+```yaml
+      verifier_metadata: |
+        environment=production
+        compliance_framework=SOC2
+        auditor_id=security-team
+        policy_version=2026.1
+```
+
+The verification workflow also supports manual triggering via `workflow_dispatch` for interactive runs. A convenience wrapper `.github/workflows/wf-verify.yaml` provides a simple example of manual dispatch usage.
 
 For the complete manual verification and reproducibility walkthrough, see [VERIFICATION_AND_REPRODUCIBILITY_GUIDE.md](./docs/VERIFICATION_AND_REPRODUCIBILITY_GUIDE.md).
 
@@ -286,13 +310,13 @@ For the complete manual verification and reproducibility walkthrough, see [VERIF
 
 ## SLSA Alignment
 
-> **Note:** The current SLSA specification (v1.1/v1.2) formally defines Levels 1–3. Level 4 remains a work in progress. This workflow implements the Level 3 controls and produces extra reproducibility evidence so to be prepared when Level 4 publication solidifies.
+> **Note:** This workflow implements **SLSA Build Track Level 3** requirements as defined in the SLSA v1.2 specification (Build Track requirements are unchanged from v1.1). The SLSA v1.2 specification also introduced a Source Track for securing source code development practices. While this workflow operates on GitHub and benefits from GitHub's source controls, formal Source Track compliance is not explicitly claimed. Level 4 remains a work in progress; this workflow collects additional reproducibility evidence to prepare for Level 4 requirements once formally published.
 
-The following table maps the current [SLSA v1.2-rc1](https://slsa.dev/spec/v1.2-rc1/) requirements to how this workflow addresses each safeguard .
+The following table maps the current [SLSA v1.2](https://slsa.dev/spec/v1.2/) Build Track requirements to how this workflow addresses each safeguard.
 
 > ⚠️ **Disclaimer:** While this workflow implements the controls listed below, achieving SLSA compliance also depends on organizational policies and practices beyond the scope of this automation, like mandatory reviews from at least one other person. Users should ensure that their overall processes align with these SLSA requirements.
 
-| SLSA v1.2 Requirement | Sub-requirement                                        | Compliant | Evidence                                                                                                                                                                                                    |
+| SLSA v1.2 Build Track Requirement | Sub-requirement                                        | Compliant | Evidence                                                                                                                                                                                                    |
 | --------------------- | ------------------------------------------------------ | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Source**            |                                                        |           |                                                                                                                                                                                                             |
 | Version Control       | All source code is version controlled.                 | Yes       | The project is hosted on GitHub.                                                                                                                                                                            |

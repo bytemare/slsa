@@ -38,6 +38,58 @@
 #   4 - Download failed
 #
 ###############################################################################
+# POLICY SPECIFICATION
+###############################################################################
+#
+# This script serves as both the verification implementation AND the policy
+# specification. When generating Verification Summary Attestations (VSAs), the
+# policy.uri field points to this script and includes its SHA-256 digest.
+#
+# SLSA Build Level 3 Requirements (per SLSA v1.2):
+#
+# 1. CHECKSUM INTEGRITY
+#    - Verify SHA-256 checksums of source tarball against subjects.sha256
+#    - Verify SHA-256 checksums of checksums.txt against subjects.sha256
+#    - All checksums must match to ensure artifact integrity
+#
+# 2. SIGNATURE VERIFICATION (Sigstore/Cosign)
+#    - Verify tarball signature bundle (keyless signing via GitHub OIDC)
+#    - Verify checksums.txt signature bundle
+#    - Require valid certificate chain from GitHub Actions OIDC issuer
+#    - Require certificate identity matches repository owner namespace
+#
+# 3. ATTESTATION VERIFICATION (GitHub Attestations API)
+#    - Verify SLSA provenance attestation via GitHub CLI
+#    - Verify SBOM attestation
+#    - Require attestations signed by specified workflow repository
+#
+# 4. PROVENANCE VALIDATION (slsa-framework/slsa-verifier)
+#    - Verify provenance structure (in-toto DSSE envelope)
+#    - Verify provenance subject matches artifact digest
+#    - Verify source URI matches repository
+#    - Verify source tag matches release tag
+#
+# 5. SBOM INSPECTION
+#    - Verify SBOM file exists and is valid CycloneDX JSON
+#    - Verify SBOM contains component list
+#
+# 6. VSA VERIFICATION (when --mode vsa or VSA files present)
+#    - Verify VSA signature bundle via Cosign
+#    - Verify verificationResult == "PASSED"
+#    - Verify verifiedLevels contains "SLSA_BUILD_LEVEL_3"
+#    - Verify VSA subject digest matches subjects.sha256
+#    - Verify VSA resourceUri matches expected release URI
+#
+# 7. REPRODUCIBILITY (--mode reproduce only)
+#    - Rebuild source tarball in hermetic container environment
+#    - Verify rebuilt artifact digest matches published artifact
+#    - Use exact builder image from build.env (if available)
+#
+# Policy Enforcement: ALL checks in the selected mode must pass. Any single
+# failure results in exit code 3 (EXIT_VERIFICATION_FAILED) and prevents VSA
+# emission with verificationResult="PASSED".
+#
+###############################################################################
 
 # ===========================================================================
 # Script Metadata
@@ -116,7 +168,7 @@ VERIFIER_ID=""
 VERIFIER_VERSIONS=()
 VERIFIED_LEVELS=()
 RESOURCE_URI=""
-SLSA_VERSION="1.1"
+SLSA_VERSION="1.2"
 TIME_VERIFIED_OVERRIDE=""
 SIGNER_REPO=""
 SIGNER_WORKFLOW=""
@@ -176,7 +228,7 @@ ${YELLOW}Optional Arguments:${NC}
                        - full: Complete verification of all release artifacts.
                        - reproduce: Full, containerized reproducibility check.
                        - vsa: Verify verification-summary attestation only.
-  --emit-vsa PATH      Emit a v1.1 Verification Summary Attestation JSON to PATH
+  --emit-vsa PATH      Emit a v1.2 Verification Summary Attestation JSON to PATH
   --verifier-id URI    Identifier for the verifying entity (required when emitting a VSA)
   --verifier-version K=V
                        Additional version metadata for the verifier (repeatable)
@@ -188,7 +240,7 @@ ${YELLOW}Optional Arguments:${NC}
   --signer-workflow W  Reusable workflow file that signed attestations (owner/repo/path)
   --resource-uri URI   Resource URI describing the artifact under verification
   --time-verified TS   Override the VSA timeVerified field (RFC3339, defaults to current time)
-  --slsa-version VER   Predicated SLSA version for the VSA (default: 1.1)
+  --slsa-version VER   Predicated SLSA version for the VSA (default: 1.2)
   -V, --version        Show version information
   --help               Show this help message
 

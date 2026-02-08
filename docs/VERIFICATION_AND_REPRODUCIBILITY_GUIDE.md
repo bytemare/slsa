@@ -11,9 +11,11 @@
 - [Reproducing Builds Locally](#reproducing-builds-locally)
 - [Troubleshooting](#troubleshooting)
 
+> **Note:** This guide covers **SLSA Build Track Level 3** verification as defined in SLSA v1.2. The SLSA v1.2 specification defines separate Build Track and Source Track levels; this verification process focuses on Build Track compliance.
+
 ---
 
-This release verification process is designed to verify SLSA Level 3 compliance and collect additional hermetic Level 4 reproducibility evidence.
+This release verification process is designed to verify SLSA Build Track Level 3 compliance (as defined in SLSA v1.2) and collect additional hermetic reproducibility evidence for future Level 4 requirements.
 This verification process ensures:
 
 | Stakeholder                   | Benefit                                                       |
@@ -98,6 +100,46 @@ jobs:
     with:
       workflow_repo: <your-org>/<your-repo>
       workflow_ref: <pinned-commit>
+```
+
+#### Automatic Verifier Metadata
+
+When using the verification workflow with VSA emission (`emit_vsa: true`), the following metadata is **automatically embedded** in the Verification Summary Attestation for traceability:
+
+- `workflow_ref`: The exact commit/tag/branch of the verification workflow used
+- `script_sha`: SHA-256 hash of the `verify-release.sh` script for integrity verification
+
+You can optionally add **custom metadata** for compliance tracking, auditing context, or environment details:
+
+```yaml
+jobs:
+  verify-release:
+    uses: bytemare/slsa/.github/workflows/verify.yaml@v1.0.0
+    with:
+      workflow_ref: v1.0.0
+      tag: v2.3.0
+      mode: full
+      emit_vsa: true
+      upload_to_release: true
+      verifier_id: https://example.com/security-team/verifier
+      verifier_metadata: |
+        environment=production
+        compliance_framework=SOC2
+        auditor_id=security-team
+        policy_version=2024.1
+    permissions:
+      contents: write
+      id-token: write
+```
+
+The resulting VSA will contain:
+```
+workflow_ref=v1.0.0
+script_sha=abc123...
+environment=production
+compliance_framework=SOC2
+auditor_id=security-team
+policy_version=2024.1
 ```
 
 ### Manually verifying the tarball
