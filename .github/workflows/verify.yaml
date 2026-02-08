@@ -150,6 +150,7 @@ jobs:
       - name: Load and resolve versions
         id: resolve
         env:
+          GITHUB_OUTPUT_FILE: ${{ github.output }}
           INPUT_COSIGN_VERSION: ${{ inputs.cosign_version }}
           INPUT_COSIGN_SHA256: ${{ inputs.cosign_sha256 }}
           INPUT_SLSA_VERIFIER_VERSION: ${{ inputs.slsa_verifier_version }}
@@ -176,7 +177,7 @@ jobs:
             echo "cosign_sha256=${cosign_sha256}"
             echo "slsa_verifier_version=${slsa_verifier_version}"
             echo "builder_image=${builder_image}"
-          } >> "$GITHUB_OUTPUT"
+          } >> "$GITHUB_OUTPUT_FILE"
 
           echo "Resolved tool versions:"
           echo "  cosign: ${cosign_version} (sha256: ${cosign_sha256:0:16}...)"
@@ -222,6 +223,7 @@ jobs:
         env:
           WORKFLOW_REPO_INPUT: ${{ inputs.workflow_repo }}
           WORKFLOW_REF_INPUT: ${{ inputs.workflow_ref }}
+          GITHUB_OUTPUT_FILE: ${{ github.output }}
         run: |
           set -euo pipefail
           repo="${WORKFLOW_REPO_INPUT:-bytemare/slsa}"
@@ -230,8 +232,8 @@ jobs:
             echo "Missing required input: workflow_ref (set to the same ref as uses: ...@<ref>)" >&2
             exit 1
           fi
-          echo "repo=${repo}" >> "$GITHUB_OUTPUT"
-          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+          echo "repo=${repo}" >> "$GITHUB_OUTPUT_FILE"
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT_FILE"
 
       - name: Checkout workflow repo
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
@@ -246,6 +248,7 @@ jobs:
         env:
           USER_METADATA: ${{ inputs.verifier_metadata }}
           WORKFLOW_REF: ${{ steps.workflow_source.outputs.ref }}
+          GITHUB_OUTPUT_FILE: ${{ github.output }}
         run: |
           set -euo pipefail
           
@@ -268,7 +271,7 @@ jobs:
             echo "metadata<<EOF"
             echo "${metadata}"
             echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          } >> "$GITHUB_OUTPUT_FILE"
           
           echo "Verifier metadata:"
           echo "${metadata}"
@@ -282,6 +285,8 @@ jobs:
           GHA_COSIGN_SHA256: ${{ needs.load_versions.outputs.cosign_sha256 }}
           GHA_SLSA_VERIFIER_VERSION: ${{ needs.load_versions.outputs.slsa_verifier_version }}
           GHA_BUILDER_IMAGE: ${{ needs.load_versions.outputs.builder_image }}
+          GITHUB_OUTPUT_FILE: ${{ github.output }}
+          GITHUB_PATH_FILE: ${{ github.path }}
         run: |
           set -euo pipefail
 
@@ -324,7 +329,7 @@ jobs:
             echo "modes=$(IFS=,; echo "${modes[*]}")"
             echo "need_verifier=$need_verifier"
             echo "need_docker=$need_docker"
-          } >> "$GITHUB_OUTPUT"
+          } >> "$GITHUB_OUTPUT_FILE"
 
           if [[ "$need_verifier" == "true" ]]; then
             curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
@@ -334,7 +339,7 @@ jobs:
             install -m 0755 cosign /usr/local/bin/cosign
 
             go install github.com/slsa-framework/slsa-verifier/v2/cli/slsa-verifier@"${GHA_SLSA_VERIFIER_VERSION}"
-            echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+            echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH_FILE"
           fi
   
           if [[ "$need_docker" == "true" ]]; then
@@ -441,6 +446,8 @@ jobs:
         if: ${{ inputs.emit_vsa && inputs.upload_to_release }}
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          TARGET_REPO: ${{ inputs.repo }}
         run: |
           set -euo pipefail
           
@@ -454,11 +461,11 @@ jobs:
             install -m 0755 gh_2.40.1_linux_amd64/bin/gh /usr/local/bin/gh
           fi
           
-          echo "Uploading VSA files to release ${{ inputs.tag }}..."
-          gh release upload "${{ inputs.tag }}" \
+          echo "Uploading VSA files to release ${RELEASE_TAG}..."
+          gh release upload "$RELEASE_TAG" \
             verification-summary.attestation.json \
             verification-summary.attestation.json.bundle \
-            --repo "${{ inputs.repo }}" \
+            --repo "$TARGET_REPO" \
             --clobber
 
       - name: Verify uploaded VSA
@@ -466,15 +473,18 @@ jobs:
         env:
           COSIGN_EXPERIMENTAL: 1
           GH_TOKEN: ${{ github.token }}
+          TARGET_REPO: ${{ inputs.repo }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          WORKFLOW_REPO: ${{ inputs.workflow_repo }}
         run: |
           set -euo pipefail
           echo "Verifying uploaded VSA with retry logic..."
           for attempt in 1 2 3 4 5; do
             if ./slsa-workflow/verify-release.sh \
-                --repo "${{ inputs.repo }}" \
-                --tag "${{ inputs.tag }}" \
+                --repo "$TARGET_REPO" \
+                --tag "$RELEASE_TAG" \
                 --mode vsa \
-                --signer-repo "${{ inputs.workflow_repo }}"; then
+                --signer-repo "$WORKFLOW_REPO"; then
               echo "VSA verification succeeded"
               exit 0
             fi
@@ -487,8 +497,10 @@ jobs:
       - name: Upload VSA artifact
         if: ${{ inputs.emit_vsa && !inputs.upload_to_release }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        env:
+          ARTIFACT_TAG: ${{ inputs.tag }}
         with:
-          name: vsa-${{ inputs.tag }}
+          name: vsa-${{ env.ARTIFACT_TAG }}
           if-no-files-found: error
           path: |
             verification-summary.attestation.json
