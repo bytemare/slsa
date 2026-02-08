@@ -99,9 +99,11 @@ jobs:
         run: |
           set -euo pipefail
           # Validate and export PR context for safe use
-          echo "pr_head_ref=${PR_HEAD_REF}" >> "$GITHUB_OUTPUT_FILE"
-          echo "pr_head_repo=${PR_HEAD_REPO}" >> "$GITHUB_OUTPUT_FILE"
-          echo "pr_head_sha=${PR_HEAD_SHA}" >> "$GITHUB_OUTPUT_FILE"
+          {
+            echo "pr_head_ref=${PR_HEAD_REF}"
+            echo "pr_head_repo=${PR_HEAD_REPO}"
+            echo "pr_head_sha=${PR_HEAD_SHA}"
+          } >> "$GITHUB_OUTPUT_FILE"
 
       - name: Checkout PR branch
         if: ${{ github.event_name == 'pull_request' }}
