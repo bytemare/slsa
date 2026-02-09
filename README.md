@@ -283,14 +283,25 @@ jobs:
     with:
       workflow_ref: <pinned-commit>
       tag: <tag>
-      mode: full,reproduce   # run multiple modes sequentially
-      emit_vsa: true         # optional – uploads a signed verification summary (requires full)
+      mode: full,reproduce    # run multiple modes sequentially
+      emit_vsa: true          # optional – generate a signed Verification Summary Attestation (requires full)
       upload_to_release: true # optional – upload VSA to GitHub release (requires contents: write)
-      verifier_id: <https://example.com/trusted-verifier> # optional – URI to identify the verifier in the VSA
     permissions:
-      contents: read         # use contents: write if upload_to_release is true
+      contents: read          # use contents: write if upload_to_release is true
       id-token: write
 ```
+
+**Automatic Verifier Identity**: When `emit_vsa: true`, the workflow automatically computes a `verifier_id` pointing to the exact commit SHA of the verification workflow:
+```
+https://github.com/{workflow_repo}/blob/{commit_sha}/.github/workflows/verify.yaml
+```
+This ensures immutability and traceability. You can override by explicitly providing `verifier_id` if needed.
+
+**Resource and Policy URIs**: The VSA includes:
+- `resource_uri` (default: `https://github.com/{repo}/releases/tag/{tag}`) – identifies the artifact being verified
+- `policy_uri` (default: `https://github.com/{workflow_repo}/blob/{workflow_ref}/verify-release.sh`) – points to the verification policy
+
+Both support custom values via workflow inputs.
 
 **Verifier Metadata**: The workflow automatically embeds `workflow_ref` and `script_sha` in the VSA for traceability. You can optionally add custom metadata for compliance tracking:
 

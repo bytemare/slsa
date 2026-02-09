@@ -606,7 +606,6 @@ jobs:
       emit_vsa: true
       upload_to_release: true
       verify_vsa_after_upload: true
-      verifier_id: https://github.com/${{ inputs.workflow_repo }}/.github/workflows/slsa.yaml@${{ inputs.workflow_ref }}
       resource_uri: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
       policy_uri: https://github.com/${{ inputs.workflow_repo }}/blob/${{ inputs.workflow_ref }}/verify-release.sh
       workflow_repo: ${{ inputs.workflow_repo }}

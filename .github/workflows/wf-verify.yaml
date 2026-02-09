@@ -41,5 +41,4 @@ jobs:
       tag: ${{ github.event.inputs.tag }}
       mode: ${{ github.event.inputs.mode || 'full' }}
       emit_vsa: ${{ github.event.inputs.emit_vsa == 'true' }}
-      verifier_id: https://github.com/bytemare/slsa/.github/workflows/verify.yaml
       workflow_ref: ${{ github.sha }}

@@ -35,7 +35,7 @@ on:
         description: 'Verifier identifier to embed when emitting a VSA'
         type: string
         required: false
-        default: 'https://github.com/bytemare/slsa/.github/workflows/verify.yaml'
+        default: ''
       verifier_metadata:
         description: 'Multi-line key=value pairs for verifier metadata (passed as --verifier-version args)'
         type: string
@@ -263,9 +263,13 @@ jobs:
         env:
           USER_METADATA: ${{ inputs.verifier_metadata }}
           WORKFLOW_REF: ${{ steps.workflow_source.outputs.ref }}
+          WORKFLOW_REPO: ${{ steps.workflow_source.outputs.repo }}
           GITHUB_OUTPUT_FILE: ${{ github.output }}
         run: |
           set -euo pipefail
+          
+          # Resolve to commit SHA (immutable reference)
+          workflow_commit=$(git -C slsa-workflow rev-parse HEAD)
           
           # Compute script integrity hash
           script_sha=$(sha256sum slsa-workflow/verify-release.sh | awk '{print $1}')
@@ -274,6 +278,12 @@ jobs:
           metadata="workflow_ref=${WORKFLOW_REF}"
           metadata+=$'\n'
           metadata+="script_sha=${script_sha}"
+          
+          # Export resolved commit for verifier_id
+          {
+            echo "workflow_commit=${workflow_commit}"
+            echo "workflow_repo=${WORKFLOW_REPO}"
+          } >> "$GITHUB_OUTPUT_FILE"
           
           # Merge with user-provided metadata
           if [[ -n "${USER_METADATA:-}" ]]; then
@@ -364,18 +374,8 @@ jobs:
 
       - name: Run verification modes
         env:
-          COSIGN_EXPERIMENTAL: 1
-          GH_TOKEN: ${{ github.token }}
-          GHA_CALLER_REPO: ${{ github.repository }}
-          GHA_MODES: ${{ steps.setup.outputs.modes }}
-          GHA_EMIT_VSA: ${{ inputs.emit_vsa }}
-          GHA_VERIFIER_ID: ${{ inputs.verifier_id }}
-          GHA_VERIFIER_METADATA: ${{ steps.verifier_metadata.outputs.metadata }}
-          GHA_RESOURCE_URI: ${{ inputs.resource_uri }}
-          GHA_POLICY_URI: ${{ inputs.policy_uri }}
-          GHA_INPUT_REPO: ${{ inputs.repo }}
-          GHA_INPUT_TAG: ${{ inputs.tag }}
-          GHA_WORKFLOW_REPO: ${{ inputs.workflow_repo }}
+          COMMIT: ${{ steps.verifier_metadata.outputs.workflow_commit }}
+          GHA_WORKFLOW_REPO: ${{ steps.verifier_metadata.outputs.workflow_repo }}
         shell: bash
         run: |
           set -euo pipefail
@@ -387,10 +387,28 @@ jobs:
 
           IFS=',' read -ra modes <<< "${GHA_MODES}"
           emit_vsa="${GHA_EMIT_VSA}"
-          verifier_id="${GHA_VERIFIER_ID}"
           verifier_metadata="${GHA_VERIFIER_METADATA}"
           resource_uri="${GHA_RESOURCE_URI}"
           policy_uri="${GHA_POLICY_URI}"
+          
+          # Compute verifier_id if not provided (use resolved commit SHA for immutability)
+          if [[ -n "${GHA_VERIFIER_ID}" ]]; then
+            verifier_id="${GHA_VERIFIER_ID}"
+          else
+            verifier_id="https://github.com/${GHA_WORKFLOW_REPO}/blob/${GHA_WORKFLOW_COMMIT
+
+          IFS=',' read -ra modes <<< "${GHA_MODES}"
+          emit_vsa="${GHA_EMIT_VSA}"
+          verifier_metadata="${GHA_VERIFIER_METADATA}"
+          resource_uri="${GHA_RESOURCE_URI}"
+          policy_uri="${GHA_POLICY_URI}"
+          
+          # Compute verifier_id if not provided
+          if [[ -n "${GHA_VERIFIER_ID}" ]]; then
+            verifier_id="${GHA_VERIFIER_ID}"
+          else
+            verifier_id="https://github.com/${GHA_WORKFLOW_REPO}/blob/${GHA_WORKFLOW_REF}/.github/workflows/verify.yaml"
+          fi
 
           declare -a emit_args=()
           if [[ "$emit_vsa" == "true" ]]; then
