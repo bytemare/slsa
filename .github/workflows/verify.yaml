@@ -285,32 +285,21 @@ jobs:
           # Compute script integrity hash
           script_sha=$(sha256sum slsa-workflow/verify-release.sh | awk '{print $1}')
           
-          # Build default metadata
-          metadata="workflow_ref=${WORKFLOW_REF}"
-          metadata+=$'\n'
-          metadata+="script_sha=${script_sha}"
-          
           # Export resolved commit for verifier_id
           {
             echo "workflow_commit=${workflow_commit}"
             echo "workflow_repo=${WORKFLOW_REPO}"
           } >> "$GITHUB_OUTPUT"
           
-          # Merge with user-provided metadata
-          if [[ -n "${USER_METADATA:-}" ]]; then
-            metadata+=$'\n'
-            metadata+="${USER_METADATA}"
-          fi
-          
-          # Export for use in later steps
           {
             echo "metadata<<EOF"
-            echo "${metadata}"
+            printf 'workflow_ref=%s\n' "${WORKFLOW_REF}"
+            printf 'script_sha=%s\n' "${script_sha}"
+            if [[ -n "${USER_METADATA:-}" ]]; then
+              printf '%s\n' "${USER_METADATA}"
+            fi
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
-          
-          echo "Verifier metadata:"
-          echo "${metadata}"
 
       - name: Prepare tooling
         id: setup
