@@ -171,6 +171,21 @@ jobs:
         run: |
           set -euo pipefail
           CONFIG=".github/tool-versions.json"
+          
+          echo "[DEBUG] ====== Load and resolve versions ======" >&2
+          echo "[DEBUG] Config file: ${CONFIG}" >&2
+          if [[ -f "$CONFIG" ]]; then
+            echo "[DEBUG] Config file exists" >&2
+            echo "[DEBUG] Config contents:" >&2
+            cat "$CONFIG" >&2
+          else
+            echo "[ERROR] Config file not found!" >&2
+            echo "[ERROR] Current directory: $(pwd)" >&2
+            echo "[ERROR] Directory contents:" >&2
+            ls -la >&2
+            exit 1
+          fi
+          echo "" >&2
 
           cosign_version="${INPUT_COSIGN_VERSION:-$(jq -r '.tools.cosign.version' "$CONFIG")}"
           cosign_sha256="${INPUT_COSIGN_SHA256:-$(jq -r '.tools.cosign.sha256' "$CONFIG")}"
@@ -314,6 +329,14 @@ jobs:
           GITHUB_PATH_FILE: ${{ github.path }}
         run: |
           set -euo pipefail
+          
+          echo "[DEBUG] ====== Prepare tooling step ======" >&2
+          echo "[DEBUG] GHA_COSIGN_VERSION=${GHA_COSIGN_VERSION}" >&2
+          echo "[DEBUG] GHA_COSIGN_SHA256=${GHA_COSIGN_SHA256:0:16}..." >&2
+          echo "[DEBUG] GHA_SLSA_VERIFIER_VERSION=${GHA_SLSA_VERIFIER_VERSION}" >&2
+          echo "[DEBUG] GHA_BUILDER_IMAGE=${GHA_BUILDER_IMAGE}" >&2
+          echo "[DEBUG] GHA_MODES_INPUT=${GHA_MODES_INPUT}" >&2
+          echo "" >&2
 
           modes_input="${GHA_MODES_INPUT}"
           if [[ -z "$modes_input" ]]; then
@@ -349,14 +372,28 @@ jobs:
             modes+=(full)
             need_verifier=true
           fi
+osign_url="https://github.com/sigstore/cosign/releases/download/${GHA_COSIGN_VERSION}/cosign-linux-amd64"
+            echo "[DEBUG] Downloading cosign from: ${cosign_url}" >&2
+            
+            if ! curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
+              --proto '=https' --proto-redir '=https' --max-redirs 1 \
+              -o cosign "${cosign_url}" 2>&1; then
+              echo "[ERROR] Failed to download cosign" >&2
+              echo "[ERROR] URL: ${cosign_url}" >&2
+              http_code=$(curl -sI -o /dev/null -w "%{http_code}" "${cosign_url}" 2>&1 || echo "failed")
+              echo "[ERROR] HTTP response code: ${http_code}" >&2
+              exit 1
+            fi
+            
+            echo "[DEBUG] Verifying cosign SHA256 checksum" >&2
+            echo "${GHA_COSIGN_SHA256}  cosign" | sha256sum -c -
+            install -m 0755 cosign /usr/local/bin/cosign
+            echo "[DEBUG] Cosign installed successfully" >&2
 
-          {
-            echo "modes=$(IFS=,; echo "${modes[*]}")"
-            echo "need_verifier=$need_verifier"
-            echo "need_docker=$need_docker"
-          } >> "$GITHUB_OUTPUT_FILE"
-
-          if [[ "$need_verifier" == "true" ]]; then
+            echo "[DEBUG] Installing slsa-verifier via go install" >&2
+            go install github.com/slsa-framework/slsa-verifier/v2/cli/slsa-verifier@"${GHA_SLSA_VERIFIER_VERSION}"
+            echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH_FILE"
+            echo "[DEBUG] slsa-verifier installed successfully" >&2
             curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
               --proto '=https' --proto-redir '=https' --max-redirs 1 \
               -o cosign "https://github.com/sigstore/cosign/releases/download/${GHA_COSIGN_VERSION}/cosign-linux-amd64"
