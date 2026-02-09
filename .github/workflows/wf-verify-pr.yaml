@@ -31,8 +31,7 @@ jobs:
     uses: ./.github/workflows/verify.yaml
     with:
       repo: ${{ github.repository }}
-      tag: v0.0.12
+      tag: v0.1.0
       mode: full,reproduce
       emit_vsa: true
-      verifier_id: https://github.com/bytemare/slsa/.github/workflows/verify.yaml
       workflow_ref: ${{ github.event.pull_request.head.sha }}

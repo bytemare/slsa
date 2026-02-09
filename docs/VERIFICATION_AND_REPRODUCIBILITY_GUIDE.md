@@ -11,9 +11,11 @@
 - [Reproducing Builds Locally](#reproducing-builds-locally)
 - [Troubleshooting](#troubleshooting)
 
+> **Note:** This guide covers **SLSA Build Track Level 3** verification as defined in SLSA v1.2. The SLSA v1.2 specification defines separate Build Track and Source Track levels; this verification process focuses on Build Track compliance.
+
 ---
 
-This release verification process is designed to verify SLSA Level 3 compliance and collect additional hermetic Level 4 reproducibility evidence.
+This release verification process is designed to verify SLSA Build Track Level 3 compliance (as defined in SLSA v1.2) and collect additional hermetic reproducibility evidence for future Level 4 requirements.
 This verification process ensures:
 
 | Stakeholder                   | Benefit                                                       |
@@ -99,6 +101,98 @@ jobs:
       workflow_repo: <your-org>/<your-repo>
       workflow_ref: <pinned-commit>
 ```
+
+### Automatic Verifier Metadata
+
+When using the verification workflow with VSA emission (`emit_vsa: true`), the following metadata is **automatically embedded** in the Verification Summary Attestation for traceability:
+
+- `verifier_id`: URL pointing to the verification workflow at its exact commit SHA (e.g.,
+  `https://github.com/<workflow_repo>/blob/<commit_sha>/.github/workflows/verify.yaml`)
+- `workflow_ref`: The ref (tag/branch/SHA) used to invoke the verification workflow
+- `script_sha`: SHA-256 hash of the `verify-release.sh` script for integrity verification
+
+The `verifier_id` is automatically computed using the workflow repository and the resolved
+commit SHA (not the potentially mutable tag or branch), ensuring immutability and
+traceability. You can override it by explicitly providing the `verifier_id` input.
+
+You can optionally add **custom metadata** for compliance tracking, auditing context, or environment details:
+
+```yaml
+jobs:
+  verify-release:
+    uses: bytemare/slsa/.github/workflows/verify.yaml@v1.0.0
+    with:
+      workflow_ref: v1.0.0
+      tag: v2.3.0
+      mode: full
+      emit_vsa: true
+      upload_to_release: true
+      verifier_metadata: |
+        environment=production
+        compliance_framework=SOC2
+        auditor_id=security-team
+        policy_version=2024.1
+    permissions:
+      contents: write
+      id-token: write
+```
+
+The resulting VSA will contain:
+
+```text
+workflow_ref=v1.0.0
+script_sha=abc123...
+environment=production
+compliance_framework=SOC2
+auditor_id=security-team
+policy_version=2024.1
+```
+
+#### Complete VSA Example with All Parameters
+
+For full control over the VSA content, including custom verifier identity and URIs:
+
+```yaml
+jobs:
+  verify-release:
+    uses: bytemare/slsa/.github/workflows/verify.yaml@a1b2c3d4  # pinned commit SHA
+    with:
+      workflow_ref: a1b2c3d4
+      tag: v2.3.0
+      mode: full,reproduce
+      emit_vsa: true
+      upload_to_release: true
+      verify_vsa_after_upload: true  # verify upload succeeded
+      
+      # Optional: Override automatic verifier_id computation
+      verifier_id: https://security.example.com/verifiers/slsa-verifier-v2
+      
+      # Optional: Custom resource URI (defaults to GitHub release tag URL)
+      resource_uri: https://artifacts.example.com/releases/myproject/v2.3.0
+      
+      # Optional: Custom policy URI (defaults to verify-release.sh in workflow repo)
+      policy_uri: https://security.example.com/policies/slsa-build-l3-2026.sh
+      
+      # Optional: Additional verifier metadata for audit trail
+      verifier_metadata: |
+        environment=production
+        compliance_framework=SOC2
+        auditor_id=security-team@example.com
+        policy_version=2026.1
+        verification_timestamp={{ github.run_id }}
+    permissions:
+      contents: write
+      id-token: write
+```
+
+**Parameter Notes:**
+
+- `resource_uri`: URI identifying the artifact being verified. Stored in VSA's `predicate.resourceUri`. Verification mode checks this matches the expected GitHub release URL.
+- `policy_uri`: URI of the verification policy document. Stored in VSA's `predicate.policy.uri` along with the policy script's SHA-256 digest.
+- `verifier_id`: Identifier for the verifying entity. Stored in VSA's `predicate.verifier.id`. Auto-computed as the workflow file URL with resolved commit SHA.
+- `verify_vsa_after_upload`: When true, automatically downloads and verifies the uploaded VSA with retry logic to confirm upload success.
+
+See [SLSA Verification Summary Attestation v1.2](https://slsa.dev/spec/v1.2/verification_summary) for the full VSA specification.
 
 ### Manually verifying the tarball
 
