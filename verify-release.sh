@@ -448,15 +448,24 @@ download_release_file() {
     local output="$2"
 
     if ! tokenless_actions; then
-        if gh release download "$TAG" --repo "$REPO" -p "$name" --output "$output"; then
+        echo "[DEBUG] Attempting gh release download: TAG=${TAG} REPO=${REPO} PATTERN=${name}" >&2
+        if gh release download "$TAG" --repo "$REPO" -p "$name" --output "$output" 2>&1 | tee /tmp/gh-download-error.log >&2; then
             return 0
+        else
+            echo "[ERROR] gh release download failed. See output above." >&2
         fi
     fi
 
     local base_url="${GITHUB_SERVER_URL:-https://github.com}"
     local url="${base_url}/${REPO}/releases/download/${TAG}/${name}"
-    if curl -fsSL -o "$output" "$url"; then
+    echo "[DEBUG] Attempting curl download: ${url}" >&2
+    if curl -fsSL -o "$output" "$url" 2>&1; then
         return 0
+    else
+        local http_code
+        http_code=$(curl -sI -o /dev/null -w "%{http_code}" "$url" 2>&1)
+        echo "[ERROR] curl download failed: ${url}" >&2
+        echo "[ERROR] HTTP response code: ${http_code}" >&2
     fi
 
     return 1
@@ -466,13 +475,20 @@ download_release_pattern() {
     local pattern="$1"
 
     if ! tokenless_actions; then
-        gh release download "$TAG" --repo "$REPO" -p "$pattern" || true
+        echo "[DEBUG] Attempting gh release download: TAG=${TAG} REPO=${REPO} PATTERN=${pattern}" >&2
+        gh release download "$TAG" --repo "$REPO" -p "$pattern" 2>&1 | tee /tmp/gh-pattern-error.log >&2 || true
         return 0
     fi
 
     local api_url="${GITHUB_API_URL:-https://api.github.com}/repos/${REPO}/releases/tags/${TAG}"
+    echo "[DEBUG] Fetching release assets from GitHub API: ${api_url}" >&2
     local assets
-    if ! assets=$(curl -fsSL -H "Accept: application/vnd.github+json" "$api_url"); then
+    if ! assets=$(curl -fsSL -H "Accept: application/vnd.github+json" "$api_url" 2>&1); then
+        echo "[ERROR] Failed to fetch release metadata from GitHub API" >&2
+        echo "[ERROR] API URL: ${api_url}" >&2
+        local http_code
+        http_code=$(curl -sI -o /dev/null -w "%{http_code}" -H "Accept: application/vnd.github+json" "$api_url" 2>&1)
+        echo "[ERROR] HTTP response code: ${http_code}" >&2
         return 0
     fi
 
@@ -483,7 +499,12 @@ download_release_pattern() {
 
     while IFS=$'\t' read -r name url; do
         if [[ "$name" == "$pattern" ]]; then
-            if ! curl -fsSL -L -o "$name" "$url"; then
+            echo "[DEBUG] Downloading asset: ${name} from ${url}" >&2
+            if ! curl -fsSL -L -o "$name" "$url" 2>&1; then
+                local http_code
+                http_code=$(curl -sI -o /dev/null -w "%{http_code}" -L "$url" 2>&1)
+                echo "[ERROR] Failed to download ${name} from ${url}" >&2
+                echo "[ERROR] HTTP response code: ${http_code}" >&2
                 continue
             fi
         fi
@@ -523,6 +544,12 @@ run_slsa_verifier() {
 download_artifacts() {
     local patterns=()
 
+    echo "[DEBUG] ====== Starting artifact download ======" >&2
+    echo "[DEBUG]   MODE=${MODE}" >&2
+    echo "[DEBUG]   REPO=${REPO}" >&2
+    echo "[DEBUG]   TAG=${TAG}" >&2
+    echo "" >&2
+
     if [[ "$MODE" == "vsa" ]]; then
         patterns=(
             "verification-summary.attestation.json"
@@ -548,11 +575,20 @@ download_artifacts() {
         fi
     fi
 
+    echo "[DEBUG] Artifact patterns to download: ${patterns[*]}" >&2
+    
     verify_step "Downloading release artifacts"
 
     for pattern in "${patterns[@]}"; do
+        echo "[DEBUG] Downloading pattern: ${pattern}" >&2
         download_release_pattern "$pattern"
     done
+
+    echo "" >&2
+    echo "[DEBUG] ====== Download phase complete ======" >&2
+    echo "[DEBUG] Files in work directory:" >&2
+    ls -lah . >&2
+    echo "" >&2
 
     if [[ "$MODE" == "vsa" ]]; then
         if [[ ! -f verification-summary.attestation.json ]]; then
@@ -967,11 +1003,14 @@ run_repro_check() {
 
     # Pull the published subjects + build.env so we can reuse the exact builder image
     # and artifact digest captured during packaging.
+    echo "[DEBUG] Downloading subjects.sha256 for reproduce mode" >&2
     if ! download_release_file "subjects.sha256" "$subjects_tmp"; then
         echo -e "${RED}Failed to download subjects.sha256${NC}" >&2
+        echo "[ERROR] subjects.sha256 download failed (see debug output above)" >&2
         return 1
     fi
-    download_release_file "build.env" "$build_env_tmp" || true
+    echo "[DEBUG] Downloading build.env for reproduce mode" >&2
+    download_release_file "build.env" "$build_env_tmp" || echo "[DEBUG] build.env not found (optional)" >&2
 
     local artifact_filename expected_digest builder_from_env script_sha_expected
     artifact_filename=$(awk 'NR==1 {print $2}' "$subjects_tmp")
@@ -1030,7 +1069,15 @@ ok
 
 info "Downloading ${ARTIFACT_NAME}"
 mkdir -p "$(dirname "$ARTIFACT_NAME")"
-curl -sSLo "$ARTIFACT_NAME" "https://github.com/${REPO}/releases/download/${TAG}/${ARTIFACT_NAME}" || fail "Unable to download artifact"
+local artifact_url="https://github.com/${REPO}/releases/download/${TAG}/${ARTIFACT_NAME}"
+echo "[DEBUG] Downloading artifact from: ${artifact_url}" >&2
+if ! curl -sSL -o "$ARTIFACT_NAME" "${artifact_url}" 2>&1; then
+    local http_code
+    http_code=$(curl -sI -o /dev/null -w "%{http_code}" "${artifact_url}" 2>&1)
+    echo "[ERROR] Failed to download artifact from: ${artifact_url}" >&2
+    echo "[ERROR] HTTP response code: ${http_code}" >&2
+    fail "Unable to download artifact"
+fi
 ok
 
 info "Validating downloaded digest"
@@ -1060,12 +1107,20 @@ umask 022
 set +e
 PACKAGING_SCRIPT=""
 SCRIPT_URL="https://github.com/${REPO}/releases/download/${TAG}/package-source.sh"
-if curl -sSLo package-source.sh "$SCRIPT_URL"; then
+echo "[DEBUG] Attempting to download packaging script from: ${SCRIPT_URL}" >&2
+if curl -sSL -o package-source.sh "$SCRIPT_URL" 2>&1; then
     chmod +x package-source.sh
     PACKAGING_SCRIPT="./package-source.sh"
 elif [[ -f scripts/package-source.sh ]]; then
+    echo "[DEBUG] Using local packaging script: scripts/package-source.sh" >&2
     PACKAGING_SCRIPT="scripts/package-source.sh"
 else
+    local http_code
+    http_code=$(curl -sI -o /dev/null -w "%{http_code}" "${SCRIPT_URL}" 2>&1)
+    echo "[ERROR] Packaging script not found" >&2
+    echo "[ERROR] Tried: ${SCRIPT_URL}" >&2
+    echo "[ERROR] HTTP response code: ${http_code}" >&2
+    echo "[ERROR] Also checked: scripts/package-source.sh (not found)" >&2
     fail "Packaging script not found (expected release asset package-source.sh)"
 fi
 if [[ -n "$EXPECTED_SCRIPT_SHA" && "$EXPECTED_SCRIPT_SHA" != "unknown" ]]; then
@@ -1111,15 +1166,32 @@ EOS
 
 # Main function
 main() {
+    echo "[DEBUG] ====== verify-release.sh starting ======" >&2
+    echo "[DEBUG] Script version: ${SCRIPT_VERSION}" >&2
+    echo "[DEBUG] Arguments: $*" >&2
+    echo "" >&2
+    
     parse_args "$@"
     check_tools
 
     if [[ "$MODE" == "reproduce" ]]; then
+        echo "[DEBUG] ====== Entering reproduce mode ======" >&2
+        echo "[DEBUG]   REPO=${REPO}" >&2
+        echo "[DEBUG]   TAG=${TAG}" >&2
+        echo "" >&2
         run_repro_check
         exit $?
     fi
 
     echo -e "\n${YELLOW}Verifying release: ${REPO} @ ${TAG} (${MODE} mode)${NC}\n"
+    echo "[DEBUG] Script execution context:" >&2
+    echo "[DEBUG]   REPO=${REPO}" >&2
+    echo "[DEBUG]   TAG=${TAG}" >&2
+    echo "[DEBUG]   MODE=${MODE}" >&2
+    echo "[DEBUG]   WORK_DIR will be: $(mktemp -u)" >&2
+    echo "[DEBUG]   GITHUB_ACTIONS=${GITHUB_ACTIONS:-false}" >&2
+    echo "[DEBUG]   GH_TOKEN set: ${GH_TOKEN:+yes}" >&2
+    echo "" >&2
 
     WORK_DIR=$(mktemp -d)
     cd "$WORK_DIR"

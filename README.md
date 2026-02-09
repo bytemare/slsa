@@ -5,7 +5,7 @@
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/11820/badge)](https://www.bestpractices.dev/projects/11820)
 [![Release](https://github.com/bytemare/slsa/actions/workflows/wf-release.yaml/badge.svg)](https://github.com/bytemare/slsa/actions/workflows/wf-release.yaml)
 
-> **Complete SLSA Level 3 workflows with consumer verification tooling and Level 4 reproducibility preparation.**
+Complete SLSA Level 3 release workflows with consumer verification tooling and Level 4 reproducibility preparation.
 
 ---
 
@@ -292,7 +292,7 @@ jobs:
 ```
 
 **Automatic Verifier Identity**: When `emit_vsa: true`, the workflow automatically computes a `verifier_id` pointing to the exact commit SHA of the verification workflow:
-```
+```markdown
 https://github.com/{workflow_repo}/blob/{commit_sha}/.github/workflows/verify.yaml
 ```
 This ensures immutability and traceability. You can override by explicitly providing `verifier_id` if needed.
