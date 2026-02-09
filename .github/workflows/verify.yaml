@@ -372,7 +372,15 @@ jobs:
             modes+=(full)
             need_verifier=true
           fi
-osign_url="https://github.com/sigstore/cosign/releases/download/${GHA_COSIGN_VERSION}/cosign-linux-amd64"
+
+          {
+            echo "modes=$(IFS=,; echo "${modes[*]}")"
+            echo "need_verifier=$need_verifier"
+            echo "need_docker=$need_docker"
+          } >> "$GITHUB_OUTPUT_FILE"
+
+          if [[ "$need_verifier" == "true" ]]; then
+            cosign_url="https://github.com/sigstore/cosign/releases/download/${GHA_COSIGN_VERSION}/cosign-linux-amd64"
             echo "[DEBUG] Downloading cosign from: ${cosign_url}" >&2
             
             if ! curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
@@ -394,14 +402,6 @@ osign_url="https://github.com/sigstore/cosign/releases/download/${GHA_COSIGN_VER
             go install github.com/slsa-framework/slsa-verifier/v2/cli/slsa-verifier@"${GHA_SLSA_VERIFIER_VERSION}"
             echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH_FILE"
             echo "[DEBUG] slsa-verifier installed successfully" >&2
-            curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
-              --proto '=https' --proto-redir '=https' --max-redirs 1 \
-              -o cosign "https://github.com/sigstore/cosign/releases/download/${GHA_COSIGN_VERSION}/cosign-linux-amd64"
-            echo "${GHA_COSIGN_SHA256}  cosign" | sha256sum -c -
-            install -m 0755 cosign /usr/local/bin/cosign
-
-            go install github.com/slsa-framework/slsa-verifier/v2/cli/slsa-verifier@"${GHA_SLSA_VERIFIER_VERSION}"
-            echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH_FILE"
           fi
   
           if [[ "$need_docker" == "true" ]]; then
@@ -411,7 +411,18 @@ osign_url="https://github.com/sigstore/cosign/releases/download/${GHA_COSIGN_VER
 
       - name: Run verification modes
         env:
-          COMMIT: ${{ steps.verifier_metadata.outputs.workflow_commit }}
+          COSIGN_EXPERIMENTAL: 1
+          GH_TOKEN: ${{ github.token }}
+          GHA_CALLER_REPO: ${{ github.repository }}
+          GHA_MODES: ${{ steps.setup.outputs.modes }}
+          GHA_EMIT_VSA: ${{ inputs.emit_vsa }}
+          GHA_VERIFIER_ID: ${{ inputs.verifier_id }}
+          GHA_VERIFIER_METADATA: ${{ steps.verifier_metadata.outputs.metadata }}
+          GHA_RESOURCE_URI: ${{ inputs.resource_uri }}
+          GHA_POLICY_URI: ${{ inputs.policy_uri }}
+          GHA_INPUT_REPO: ${{ inputs.repo }}
+          GHA_INPUT_TAG: ${{ inputs.tag }}
+          GHA_WORKFLOW_COMMIT: ${{ steps.verifier_metadata.outputs.workflow_commit }}
           GHA_WORKFLOW_REPO: ${{ steps.verifier_metadata.outputs.workflow_repo }}
         shell: bash
         run: |
@@ -432,19 +443,7 @@ osign_url="https://github.com/sigstore/cosign/releases/download/${GHA_COSIGN_VER
           if [[ -n "${GHA_VERIFIER_ID}" ]]; then
             verifier_id="${GHA_VERIFIER_ID}"
           else
-            verifier_id="https://github.com/${GHA_WORKFLOW_REPO}/blob/${GHA_WORKFLOW_COMMIT
-
-          IFS=',' read -ra modes <<< "${GHA_MODES}"
-          emit_vsa="${GHA_EMIT_VSA}"
-          verifier_metadata="${GHA_VERIFIER_METADATA}"
-          resource_uri="${GHA_RESOURCE_URI}"
-          policy_uri="${GHA_POLICY_URI}"
-          
-          # Compute verifier_id if not provided
-          if [[ -n "${GHA_VERIFIER_ID}" ]]; then
-            verifier_id="${GHA_VERIFIER_ID}"
-          else
-            verifier_id="https://github.com/${GHA_WORKFLOW_REPO}/blob/${GHA_WORKFLOW_REF}/.github/workflows/verify.yaml"
+            verifier_id="https://github.com/${GHA_WORKFLOW_REPO}/blob/${GHA_WORKFLOW_COMMIT}/.github/workflows/verify.yaml"
           fi
 
           declare -a emit_args=()
