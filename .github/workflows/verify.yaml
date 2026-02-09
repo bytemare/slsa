@@ -118,7 +118,6 @@ jobs:
           INPUT_WORKFLOW_REPO: ${{ inputs.workflow_repo }}
           INPUT_REPO: ${{ inputs.repo }}
           INPUT_TAG: ${{ inputs.tag }}
-          GITHUB_OUTPUT_FILE: ${{ github.output }}
         run: |
           if [[ -z "$INPUT_WORKFLOW_REF" ]]; then
             echo "::error title=Missing Required Input::workflow_ref is required. Set it to the same ref used in uses: ...@<ref>"
@@ -140,7 +139,7 @@ jobs:
             echo "workflow_ref=${INPUT_WORKFLOW_REF}"
             echo "repo=${INPUT_REPO}"
             echo "tag=${INPUT_TAG}"
-          } >> "$GITHUB_OUTPUT_FILE"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Harden Runner
         uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76
@@ -152,7 +151,7 @@ jobs:
             github.com:443
             objects.githubusercontent.com:443
 
-      - name: Checkout workflow repo
+      - name: Checkout workflow repo for tool versions
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           repository: ${{ steps.validate.outputs.workflow_repo }}
@@ -163,7 +162,6 @@ jobs:
       - name: Load and resolve versions
         id: resolve
         env:
-          GITHUB_OUTPUT_FILE: ${{ github.output }}
           INPUT_COSIGN_VERSION: ${{ inputs.cosign_version }}
           INPUT_COSIGN_SHA256: ${{ inputs.cosign_sha256 }}
           INPUT_SLSA_VERIFIER_VERSION: ${{ inputs.slsa_verifier_version }}
@@ -205,7 +203,7 @@ jobs:
             echo "cosign_sha256=${cosign_sha256}"
             echo "slsa_verifier_version=${slsa_verifier_version}"
             echo "builder_image=${builder_image}"
-          } >> "$GITHUB_OUTPUT_FILE"
+          } >> "$GITHUB_OUTPUT"
 
           echo "Resolved tool versions:"
           echo "  cosign: ${cosign_version} (sha256: ${cosign_sha256:0:16}...)"
@@ -251,7 +249,6 @@ jobs:
         env:
           WORKFLOW_REPO_INPUT: ${{ inputs.workflow_repo }}
           WORKFLOW_REF_INPUT: ${{ inputs.workflow_ref }}
-          GITHUB_OUTPUT_FILE: ${{ github.output }}
         run: |
           set -euo pipefail
           repo="${WORKFLOW_REPO_INPUT:-bytemare/slsa}"
@@ -263,9 +260,9 @@ jobs:
           {
             echo "repo=${repo}"
             echo "ref=${ref}"
-          } >> "$GITHUB_OUTPUT_FILE"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Checkout workflow repo
+      - name: Checkout workflow repo for verification
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
         with:
           repository: ${{ steps.workflow_source.outputs.repo }}
@@ -279,7 +276,6 @@ jobs:
           USER_METADATA: ${{ inputs.verifier_metadata }}
           WORKFLOW_REF: ${{ steps.workflow_source.outputs.ref }}
           WORKFLOW_REPO: ${{ steps.workflow_source.outputs.repo }}
-          GITHUB_OUTPUT_FILE: ${{ github.output }}
         run: |
           set -euo pipefail
           
@@ -298,7 +294,7 @@ jobs:
           {
             echo "workflow_commit=${workflow_commit}"
             echo "workflow_repo=${WORKFLOW_REPO}"
-          } >> "$GITHUB_OUTPUT_FILE"
+          } >> "$GITHUB_OUTPUT"
           
           # Merge with user-provided metadata
           if [[ -n "${USER_METADATA:-}" ]]; then
@@ -311,7 +307,7 @@ jobs:
             echo "metadata<<EOF"
             echo "${metadata}"
             echo "EOF"
-          } >> "$GITHUB_OUTPUT_FILE"
+          } >> "$GITHUB_OUTPUT"
           
           echo "Verifier metadata:"
           echo "${metadata}"
@@ -325,8 +321,6 @@ jobs:
           GHA_COSIGN_SHA256: ${{ needs.load_versions.outputs.cosign_sha256 }}
           GHA_SLSA_VERIFIER_VERSION: ${{ needs.load_versions.outputs.slsa_verifier_version }}
           GHA_BUILDER_IMAGE: ${{ needs.load_versions.outputs.builder_image }}
-          GITHUB_OUTPUT_FILE: ${{ github.output }}
-          GITHUB_PATH_FILE: ${{ github.path }}
         run: |
           set -euo pipefail
           
@@ -377,7 +371,7 @@ jobs:
             echo "modes=$(IFS=,; echo "${modes[*]}")"
             echo "need_verifier=$need_verifier"
             echo "need_docker=$need_docker"
-          } >> "$GITHUB_OUTPUT_FILE"
+          } >> "$GITHUB_OUTPUT"
 
           if [[ "$need_verifier" == "true" ]]; then
             cosign_url="https://github.com/sigstore/cosign/releases/download/${GHA_COSIGN_VERSION}/cosign-linux-amd64"
@@ -396,12 +390,12 @@ jobs:
             echo "[DEBUG] Verifying cosign SHA256 checksum" >&2
             echo "${GHA_COSIGN_SHA256}  cosign" | sha256sum -c -
             install -m 0755 cosign /usr/local/bin/cosign
-            echo "[DEBUG] Cosign installed successfully" >&2
+            echo "[DEBUG] successfully installed Cosign" >&2
 
             echo "[DEBUG] Installing slsa-verifier via go install" >&2
             go install github.com/slsa-framework/slsa-verifier/v2/cli/slsa-verifier@"${GHA_SLSA_VERIFIER_VERSION}"
-            echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH_FILE"
-            echo "[DEBUG] slsa-verifier installed successfully" >&2
+            echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+            echo "[DEBUG] successfully installed slsa-verifier" >&2
           fi
   
           if [[ "$need_docker" == "true" ]]; then

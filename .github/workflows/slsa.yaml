@@ -166,7 +166,6 @@ jobs:
         env:
           INPUT_WORKFLOW_REF: ${{ inputs.workflow_ref }}
           INPUT_WORKFLOW_REPO: ${{ inputs.workflow_repo }}
-          GITHUB_OUTPUT_FILE: ${{ github.output }}
         run: |
           if [[ -z "$INPUT_WORKFLOW_REF" ]]; then
             echo "::error title=Missing Required Input::workflow_ref is required. Set it to the same ref used in uses: ...@<ref>"
@@ -178,7 +177,7 @@ jobs:
           {
             echo "workflow_repo=${workflow_repo}"
             echo "workflow_ref=${INPUT_WORKFLOW_REF}"
-          } >> "$GITHUB_OUTPUT_FILE"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Harden Runner
         uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76
@@ -201,7 +200,6 @@ jobs:
       - name: Load and resolve versions
         id: resolve
         env:
-          GITHUB_OUTPUT_FILE: ${{ github.output }}
           INPUT_COSIGN_VERSION: ${{ inputs.cosign_version }}
           INPUT_COSIGN_SHA256: ${{ inputs.cosign_sha256 }}
           INPUT_GH_VERSION: ${{ inputs.gh_version }}
@@ -249,7 +247,7 @@ jobs:
             echo "cdxgen_version=${cdxgen_version}"
             echo "node_version=${node_version}"
             echo "builder_image=${builder_image}"
-          } >> "$GITHUB_OUTPUT_FILE"
+          } >> "$GITHUB_OUTPUT"
 
           echo "Resolved tool versions:"
           echo "  cosign: ${cosign_version} (sha256: ${cosign_sha256:0:16}...)"
@@ -301,7 +299,6 @@ jobs:
       - name: Resolve workflow source
         id: workflow_source
         env:
-          GITHUB_OUTPUT_FILE: ${{ github.output }}
           WORKFLOW_REPO_INPUT: ${{ inputs.workflow_repo }}
           WORKFLOW_REF_INPUT: ${{ inputs.workflow_ref }}
         run: |
@@ -315,7 +312,7 @@ jobs:
           {
             echo "repo=${repo}"
             echo "ref=${ref}"
-          } >> "$GITHUB_OUTPUT_FILE"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Checkout workflow repo
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
@@ -404,7 +401,6 @@ jobs:
       - name: Resolve workflow source
         id: workflow_source
         env:
-          GITHUB_OUTPUT_FILE: ${{ github.output }}
           WORKFLOW_REPO_INPUT: ${{ inputs.workflow_repo }}
           WORKFLOW_REF_INPUT: ${{ inputs.workflow_ref }}
         run: |
@@ -418,7 +414,7 @@ jobs:
           {
             echo "repo=${repo}"
             echo "ref=${ref}"
-          } >> "$GITHUB_OUTPUT_FILE"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Checkout workflow repo
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
@@ -431,7 +427,6 @@ jobs:
       - id: sbom_lang
         name: Select SBOM generator
         env:
-          GITHUB_OUTPUT_FILE: ${{ github.output }}
           SBOM_LANGUAGE: ${{ inputs.sbom_language }}
         run: |
           set -euo pipefail
@@ -451,7 +446,7 @@ jobs:
             go|generic) ;;
             *) echo "Unsupported sbom_language: $lang (expected go|generic|auto)" >&2; exit 1 ;;
           esac
-          echo "lang=$lang" >> "$GITHUB_OUTPUT_FILE"
+          echo "lang=$lang" >> "$GITHUB_OUTPUT"
 
       - name: Download packaging bundle
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
@@ -463,7 +458,6 @@ jobs:
         id: paths
         env:
           ARTIFACT_PATH: ${{ needs.package_source.outputs.artifact_path }}
-          GITHUB_OUTPUT_FILE: ${{ github.output }}
         run: |
           TAR="package/${ARTIFACT_PATH}"
           {
@@ -472,7 +466,7 @@ jobs:
             echo "checksums_path=package/checksums.txt"
             echo "manifest_path=package/manifest.files.sha256"
             echo "metadata_path=package/verification.json"
-          } >> "$GITHUB_OUTPUT_FILE"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Install cosign
         if: ${{ !inputs.dry_run && inputs.sign_blobs }}
@@ -529,11 +523,10 @@ jobs:
         env:
           COSIGN_EXPERIMENTAL: 1
           ART_PATH: ${{ steps.paths.outputs.artifact_path }}
-          GITHUB_OUTPUT_FILE: ${{ github.output }}
         run: |
           set -euo pipefail
           cosign sign-blob --yes --bundle "${ART_PATH}.bundle" "${ART_PATH}"
-          echo "bundle_file=${ART_PATH}.bundle" >> "$GITHUB_OUTPUT_FILE"
+          echo "bundle_file=${ART_PATH}.bundle" >> "$GITHUB_OUTPUT"
 
       - name: Cosign sign SBOM
         if: ${{ !inputs.dry_run && inputs.sign_blobs }}
@@ -645,7 +638,6 @@ jobs:
       - name: Resolve workflow source
         id: workflow_source
         env:
-          GITHUB_OUTPUT_FILE: ${{ github.output }}
           WORKFLOW_REPO_INPUT: ${{ inputs.workflow_repo }}
           WORKFLOW_REF_INPUT: ${{ inputs.workflow_ref }}
         run: |
@@ -659,7 +651,7 @@ jobs:
           {
             echo "repo=${repo}"
             echo "ref=${ref}"
-          } >> "$GITHUB_OUTPUT_FILE"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Checkout workflow repo
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
