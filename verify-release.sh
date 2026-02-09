@@ -1069,10 +1069,9 @@ ok
 
 info "Downloading ${ARTIFACT_NAME}"
 mkdir -p "$(dirname "$ARTIFACT_NAME")"
-local artifact_url="https://github.com/${REPO}/releases/download/${TAG}/${ARTIFACT_NAME}"
+artifact_url="https://github.com/${REPO}/releases/download/${TAG}/${ARTIFACT_NAME}"
 echo "[DEBUG] Downloading artifact from: ${artifact_url}" >&2
 if ! curl -sSL -o "$ARTIFACT_NAME" "${artifact_url}" 2>&1; then
-    local http_code
     http_code=$(curl -sI -o /dev/null -w "%{http_code}" "${artifact_url}" 2>&1)
     echo "[ERROR] Failed to download artifact from: ${artifact_url}" >&2
     echo "[ERROR] HTTP response code: ${http_code}" >&2
@@ -1115,7 +1114,6 @@ elif [[ -f scripts/package-source.sh ]]; then
     echo "[DEBUG] Using local packaging script: scripts/package-source.sh" >&2
     PACKAGING_SCRIPT="scripts/package-source.sh"
 else
-    local http_code
     http_code=$(curl -sI -o /dev/null -w "%{http_code}" "${SCRIPT_URL}" 2>&1)
     echo "[ERROR] Packaging script not found" >&2
     echo "[ERROR] Tried: ${SCRIPT_URL}" >&2
