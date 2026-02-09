@@ -257,10 +257,6 @@ The script automatically:
 
 Combine `--mode full` with `--emit-vsa <file> --verifier-id <uri>` (plus optional policy metadata) to generate a [Verification Summary Attestation](https://slsa.dev/spec/v1.2/verification_summary).
 
-**Why does VSA generation live in `verify-release.sh`?**
-
-VSA production happens *after* artifact publication so a verifier role, separate from the packager, can download the release assets, run all policy checks (full mode), and sign the result. Keeping verification outside `scripts/package-source.sh` preserves this independence.
-
 **Policy as Executable Code**
 
 Unlike declarative policy languages (OPA Rego, CEL), this project uses the verification script itself as the policy. When emitting VSAs, the `policy.uri` field points to `verify-release.sh` and includes its SHA-256 digest. This approach offers several advantages:
@@ -281,10 +277,10 @@ jobs:
   verify-release:
     uses: bytemare/slsa/.github/workflows/verify.yaml@<pinned-commit>
     with:
-      workflow_ref: <pinned-commit>
+      workflow_ref: <pinned-commit> # use the same as in 'uses:...'
       tag: <tag>
       mode: full,reproduce    # run multiple modes sequentially
-      emit_vsa: true          # optional – generate a signed Verification Summary Attestation (requires full)
+      emit_vsa: true          # optional – generate a signed Verification Summary Attestation (requires mode: full)
       upload_to_release: true # optional – upload VSA to GitHub release (requires contents: write)
     permissions:
       contents: read          # use contents: write if upload_to_release is true
