@@ -129,6 +129,46 @@ else
 fi
 
 # ===========================================================================
+# Debug Logging
+# ===========================================================================
+# Default to DEBUG=true in CI for complete logs
+if [[ "${GITHUB_ACTIONS:-false}" == "true" && -z "${DEBUG:-}" ]]; then
+    DEBUG=true
+fi
+
+# Track current GitHub Actions group
+_GHA_GROUP_OPEN=false
+
+debug() {
+    if [[ "${DEBUG:-false}" == "true" ]]; then
+        # In GitHub Actions, use collapsible groups for section headers
+        if [[ "${GITHUB_ACTIONS:-false}" == "true" ]]; then
+            # Detect section headers (lines starting with ====== or major milestones)
+            if [[ "$*" =~ ^=+ ]] || [[ "$*" =~ ^(Starting|Entering|Download|Verification|Complete) ]]; then
+                # Close previous group if open
+                if [[ "$_GHA_GROUP_OPEN" == "true" ]]; then
+                    echo "::endgroup::" >&2
+                fi
+                # Start new group
+                echo "::group::🔍 DEBUG: $*" >&2
+                _GHA_GROUP_OPEN=true
+            else
+                echo "[DEBUG] $*" >&2
+            fi
+        else
+            echo "[DEBUG] $*" >&2
+        fi
+    fi
+}
+
+# Close debug group at exit in GitHub Actions
+cleanup_debug_groups() {
+    if [[ "${GITHUB_ACTIONS:-false}" == "true" && "$_GHA_GROUP_OPEN" == "true" ]]; then
+        echo "::endgroup::" >&2
+    fi
+}
+
+# ===========================================================================
 # Exit Codes
 # ===========================================================================
 readonly EXIT_SUCCESS=0
@@ -142,6 +182,7 @@ readonly EXIT_DOWNLOAD_FAILED=4
 # ===========================================================================
 # shellcheck disable=SC2329  # Function invoked via trap
 cleanup() {
+  cleanup_debug_groups
   if [[ -n "${WORK_DIR:-}" ]] && [[ -d "$WORK_DIR" ]]; then
     rm -rf "$WORK_DIR"
   fi
@@ -247,6 +288,7 @@ ${YELLOW}Optional Arguments:${NC}
 Examples:
   $0 --repo bytemare/workflows --tag 0.0.4
   $0 --repo bytemare/workflows --tag 0.0.4 --mode full
+  DEBUG=true $0 --repo bytemare/workflows --tag 0.0.4  # Enable debug logging (auto in CI)
   $0 --repo bytemare/workflows --tag 0.0.4 --mode reproduce
   $0 --repo bytemare/workflows --tag 0.0.4 --mode vsa
   $0 --repo bytemare/workflows --tag 0.0.4 --mode full --emit-vsa my.vsa.json --verifier-id https://example.com/verifier
@@ -448,7 +490,7 @@ download_release_file() {
     local output="$2"
 
     if ! tokenless_actions; then
-        echo "[DEBUG] Attempting gh release download: TAG=${TAG} REPO=${REPO} PATTERN=${name}" >&2
+        debug "Attempting gh release download: TAG=${TAG} REPO=${REPO} PATTERN=${name}"
         if gh release download "$TAG" --repo "$REPO" -p "$name" --output "$output" 2>&1 | tee /tmp/gh-download-error.log >&2; then
             return 0
         else
@@ -458,7 +500,7 @@ download_release_file() {
 
     local base_url="${GITHUB_SERVER_URL:-https://github.com}"
     local url="${base_url}/${REPO}/releases/download/${TAG}/${name}"
-    echo "[DEBUG] Attempting curl download: ${url}" >&2
+    debug "Attempting curl download: ${url}"
     if curl -fsSL -o "$output" "$url" 2>&1; then
         return 0
     else
@@ -473,43 +515,64 @@ download_release_file() {
 
 download_release_pattern() {
     local pattern="$1"
+    local required="${2:-false}"
+    local downloaded=false
 
     if ! tokenless_actions; then
-        echo "[DEBUG] Attempting gh release download: TAG=${TAG} REPO=${REPO} PATTERN=${pattern}" >&2
-        gh release download "$TAG" --repo "$REPO" -p "$pattern" 2>&1 | tee /tmp/gh-pattern-error.log >&2 || true
-        return 0
-    fi
-
-    local api_url="${GITHUB_API_URL:-https://api.github.com}/repos/${REPO}/releases/tags/${TAG}"
-    echo "[DEBUG] Fetching release assets from GitHub API: ${api_url}" >&2
-    local assets
-    if ! assets=$(curl -fsSL -H "Accept: application/vnd.github+json" "$api_url" 2>&1); then
-        echo "[ERROR] Failed to fetch release metadata from GitHub API" >&2
-        echo "[ERROR] API URL: ${api_url}" >&2
-        local http_code
-        http_code=$(curl -sI -o /dev/null -w "%{http_code}" -H "Accept: application/vnd.github+json" "$api_url" 2>&1)
-        echo "[ERROR] HTTP response code: ${http_code}" >&2
-        return 0
-    fi
-
-    local assets_list
-    if ! assets_list=$(jq -r '.assets? // [] | .[] | "\(.name)\t\(.browser_download_url)"' <<< "$assets"); then
-        return 0
-    fi
-
-    while IFS=$'\t' read -r name url; do
-        if [[ "$name" == "$pattern" ]]; then
-            echo "[DEBUG] Downloading asset: ${name} from ${url}" >&2
-            if ! curl -fsSL -L -o "$name" "$url" 2>&1; then
-                local http_code
-                http_code=$(curl -sI -o /dev/null -w "%{http_code}" -L "$url" 2>&1)
-                echo "[ERROR] Failed to download ${name} from ${url}" >&2
-                echo "[ERROR] HTTP response code: ${http_code}" >&2
-                continue
-            fi
+        debug "Attempting gh release download: TAG=${TAG} REPO=${REPO} PATTERN=${pattern}"
+        if gh release download "$TAG" --repo "$REPO" -p "$pattern" 2>&1 | tee /tmp/gh-pattern-error.log >&2; then
+            downloaded=true
         fi
-    done <<< "$assets_list"
+    else
+        local api_url="${GITHUB_API_URL:-https://api.github.com}/repos/${REPO}/releases/tags/${TAG}"
+        debug "Fetching release assets from GitHub API: ${api_url}"
+        local assets
+        if ! assets=$(curl -fsSL -H "Accept: application/vnd.github+json" "$api_url" 2>&1); then
+            echo "[ERROR] Failed to fetch release metadata from GitHub API" >&2
+            echo "[ERROR] API URL: ${api_url}" >&2
+            local http_code
+            http_code=$(curl -sI -o /dev/null -w "%{http_code}" -H "Accept: application/vnd.github+json" "$api_url" 2>&1)
+            echo "[ERROR] HTTP response code: ${http_code}" >&2
+            if [[ "$required" == "true" ]]; then
+                return 1
+            fi
+            return 0
+        fi
 
+        local assets_list
+        if ! assets_list=$(jq -r '.assets? // [] | .[] | "\(.name)\t\(.browser_download_url)"' <<< "$assets"); then
+            if [[ "$required" == "true" ]]; then
+                return 1
+            fi
+            return 0
+        fi
+
+        while IFS=$'\t' read -r name url; do
+            if [[ "$name" == "$pattern" ]]; then
+                debug "Downloading asset: ${name} from ${url}"
+                if curl -fsSL -L -o "$name" "$url" 2>&1; then
+                    downloaded=true
+                else
+                    local http_code
+                    http_code=$(curl -sI -o /dev/null -w "%{http_code}" -L "$url" 2>&1)
+                    echo "[ERROR] Failed to download ${name} from ${url}" >&2
+                    echo "[ERROR] HTTP response code: ${http_code}" >&2
+                    continue
+                fi
+            fi
+        done <<< "$assets_list"
+    fi
+
+    # Handle download result
+    if [[ "$downloaded" == "false" ]]; then
+        if [[ "$required" == "true" ]]; then
+            echo "[ERROR] Required asset matching '${pattern}' not found in release" >&2
+            return 1
+        else
+            echo "[WARN] Optional asset matching '${pattern}' not found" >&2
+        fi
+    fi
+    
     return 0
 }
 
@@ -544,10 +607,10 @@ run_slsa_verifier() {
 download_artifacts() {
     local patterns=()
 
-    echo "[DEBUG] ====== Starting artifact download ======" >&2
-    echo "[DEBUG]   MODE=${MODE}" >&2
-    echo "[DEBUG]   REPO=${REPO}" >&2
-    echo "[DEBUG]   TAG=${TAG}" >&2
+    debug "====== Starting artifact download ======"
+    debug "  MODE=${MODE}"
+    debug "  REPO=${REPO}"
+    debug "  TAG=${TAG}"
     echo "" >&2
 
     if [[ "$MODE" == "vsa" ]]; then
@@ -575,18 +638,35 @@ download_artifacts() {
         fi
     fi
 
-    echo "[DEBUG] Artifact patterns to download: ${patterns[*]}" >&2
+    debug "Artifact patterns to download: ${patterns[*]}"
     
     verify_step "Downloading release artifacts"
 
-    for pattern in "${patterns[@]}"; do
-        echo "[DEBUG] Downloading pattern: ${pattern}" >&2
-        download_release_pattern "$pattern"
-    done
+    # Download required files for all modes
+    if [[ "$MODE" == "vsa" ]]; then
+        download_release_pattern "verification-summary.attestation.json" true
+        download_release_pattern "verification-summary.attestation.json.bundle" true
+        download_release_pattern "subjects.sha256" true
+    else
+        download_release_pattern "*.tar.gz" true
+        download_release_pattern "*.bundle" true
+        download_release_pattern "subjects.sha256" true
+        download_release_pattern "checksums.txt" true
+        
+        # Download optional files for full mode
+        if [[ "$MODE" == "full" ]]; then
+            download_release_pattern "*.intoto.jsonl" false
+            download_release_pattern "sbom.cdx.json" false
+            download_release_pattern "verification.json" false
+            download_release_pattern "manifest.files.sha256" false
+            download_release_pattern "verification-summary.attestation.json" false
+            download_release_pattern "verification-summary.attestation.json.bundle" false
+        fi
+    fi
 
     echo "" >&2
-    echo "[DEBUG] ====== Download phase complete ======" >&2
-    echo "[DEBUG] Files in work directory:" >&2
+    debug "====== Download phase complete ======"
+    debug "Files in work directory:"
     ls -lah . >&2
     echo "" >&2
 
@@ -715,6 +795,19 @@ verify_attestations() {
     else
         verify_fail "Attestation verification failed"
         echo "$output" >&2
+        
+        # Add helpful troubleshooting
+        echo "" >&2
+        echo "${YELLOW}Troubleshooting attestation verification:${NC}" >&2
+        echo "1. Verify the release has .intoto.jsonl files" >&2
+        echo "2. If verifying a fork's release, specify: --signer-repo <fork-owner>/slsa" >&2
+        echo "3. Check that the release was created by GitHub Actions with SLSA provenance" >&2
+        echo "" >&2
+        echo "Details:" >&2
+        echo "  Expected attestations signed by: ${SIGNER_REPO:-${SIGNER_REPO_DEFAULT}}" >&2
+        echo "  Verifying release: ${REPO}@${TAG}" >&2
+        echo "" >&2
+        
         if [[ -n "$SIGNER_REPO" && "$SIGNER_REPO" == "$SIGNER_REPO_DEFAULT" ]]; then
             verify_fail "This run assumed the signer repo is '${SIGNER_REPO_DEFAULT}'. If the attestation was signed by another workflow repo (for example a fork or a repo that reused that workflow), re-run with --signer-repo <owner>/<repo> and optionally --signer-workflow <owner>/<repo>/.github/workflows/slsa.yaml@<ref>." >&2
         elif [[ -n "$SIGNER_REPO" ]]; then
@@ -1003,14 +1096,14 @@ run_repro_check() {
 
     # Pull the published subjects + build.env so we can reuse the exact builder image
     # and artifact digest captured during packaging.
-    echo "[DEBUG] Downloading subjects.sha256 for reproduce mode" >&2
+    debug "Downloading subjects.sha256 for reproduce mode"
     if ! download_release_file "subjects.sha256" "$subjects_tmp"; then
         echo -e "${RED}Failed to download subjects.sha256${NC}" >&2
         echo "[ERROR] subjects.sha256 download failed (see debug output above)" >&2
         return 1
     fi
-    echo "[DEBUG] Downloading build.env for reproduce mode" >&2
-    download_release_file "build.env" "$build_env_tmp" || echo "[DEBUG] build.env not found (optional)" >&2
+    debug "Downloading build.env for reproduce mode"
+    download_release_file "build.env" "$build_env_tmp" || debug "build.env not found (optional)"
 
     local artifact_filename expected_digest builder_from_env script_sha_expected
     artifact_filename=$(awk 'NR==1 {print $2}' "$subjects_tmp")
@@ -1070,7 +1163,7 @@ ok
 info "Downloading ${ARTIFACT_NAME}"
 mkdir -p "$(dirname "$ARTIFACT_NAME")"
 artifact_url="https://github.com/${REPO}/releases/download/${TAG}/${ARTIFACT_NAME}"
-echo "[DEBUG] Downloading artifact from: ${artifact_url}" >&2
+debug "Downloading artifact from: ${artifact_url}"
 if ! curl -sSL -o "$ARTIFACT_NAME" "${artifact_url}" 2>&1; then
     http_code=$(curl -sI -o /dev/null -w "%{http_code}" "${artifact_url}" 2>&1)
     echo "[ERROR] Failed to download artifact from: ${artifact_url}" >&2
@@ -1106,12 +1199,12 @@ umask 022
 set +e
 PACKAGING_SCRIPT=""
 SCRIPT_URL="https://github.com/${REPO}/releases/download/${TAG}/package-source.sh"
-echo "[DEBUG] Attempting to download packaging script from: ${SCRIPT_URL}" >&2
+debug "Attempting to download packaging script from: ${SCRIPT_URL}"
 if curl -sSL -o package-source.sh "$SCRIPT_URL" 2>&1; then
     chmod +x package-source.sh
     PACKAGING_SCRIPT="./package-source.sh"
 elif [[ -f scripts/package-source.sh ]]; then
-    echo "[DEBUG] Using local packaging script: scripts/package-source.sh" >&2
+    debug "Using local packaging script: scripts/package-source.sh"
     PACKAGING_SCRIPT="scripts/package-source.sh"
 else
     http_code=$(curl -sI -o /dev/null -w "%{http_code}" "${SCRIPT_URL}" 2>&1)
@@ -1168,31 +1261,31 @@ EOS
 
 # Main function
 main() {
-    echo "[DEBUG] ====== verify-release.sh starting ======" >&2
-    echo "[DEBUG] Script version: ${SCRIPT_VERSION}" >&2
-    echo "[DEBUG] Arguments: $*" >&2
+    debug "====== verify-release.sh starting ======"
+    debug "Script version: ${SCRIPT_VERSION}"
+    debug "Arguments: $*"
     echo "" >&2
     
     parse_args "$@"
     check_tools
 
     if [[ "$MODE" == "reproduce" ]]; then
-        echo "[DEBUG] ====== Entering reproduce mode ======" >&2
-        echo "[DEBUG]   REPO=${REPO}" >&2
-        echo "[DEBUG]   TAG=${TAG}" >&2
+        debug "====== Entering reproduce mode ======"
+        debug "  REPO=${REPO}"
+        debug "  TAG=${TAG}"
         echo "" >&2
         run_repro_check
         exit $?
     fi
 
     echo -e "\n${YELLOW}Verifying release: ${REPO} @ ${TAG} (${MODE} mode)${NC}\n"
-    echo "[DEBUG] Script execution context:" >&2
-    echo "[DEBUG]   REPO=${REPO}" >&2
-    echo "[DEBUG]   TAG=${TAG}" >&2
-    echo "[DEBUG]   MODE=${MODE}" >&2
-    echo "[DEBUG]   WORK_DIR will be: $(mktemp -u)" >&2
-    echo "[DEBUG]   GITHUB_ACTIONS=${GITHUB_ACTIONS:-false}" >&2
-    echo "[DEBUG]   GH_TOKEN set: ${GH_TOKEN:+yes}" >&2
+    debug "Script execution context:"
+    debug "  REPO=${REPO}"
+    debug "  TAG=${TAG}"
+    debug "  MODE=${MODE}"
+    debug "  WORK_DIR will be: $(mktemp -u)"
+    debug "  GITHUB_ACTIONS=${GITHUB_ACTIONS:-false}"
+    debug "  GH_TOKEN set: ${GH_TOKEN:+yes}"
     echo "" >&2
 
     WORK_DIR=$(mktemp -d)

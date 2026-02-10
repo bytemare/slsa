@@ -145,6 +145,7 @@ jobs:
   load_versions:
     name: Load tool versions
     runs-on: ubuntu-latest
+    # Timeout: Quick config parsing task (expected: <1 min)
     timeout-minutes: 5
     permissions:
       contents: read
@@ -266,6 +267,7 @@ jobs:
     needs: load_versions
     if: ${{ inputs.dry_run || github.ref_type == 'tag' }}
     runs-on: ubuntu-latest
+    # Timeout: Packaging script with reproducible builds (expected: 5-10 min)
     timeout-minutes: 15
     container:
       image: ${{ needs.load_versions.outputs.builder_image }}
@@ -357,6 +359,8 @@ jobs:
     needs: [load_versions, package_source]
     if: ${{ inputs.dry_run || github.ref_type == 'tag' }}
     runs-on: ubuntu-latest
+    # Timeout considerations mainly depend on SBOM generation with cdxgen and npm registry latency.
+    # 20 minutes sounds like plenty of time, but increase to 30 if large repos regularly timeout.
     timeout-minutes: 20
     container:
       image: ${{ needs.load_versions.outputs.builder_image }}
@@ -372,6 +376,11 @@ jobs:
         with:
           disable-sudo: true
           egress-policy: block
+          # Security Note: SBOM generation with cdxgen fetches from npm registry,
+          # allowing arbitrary package downloads. Compromised dependencies could
+          # exfiltrate data. This is inherent to SBOM generation.
+          # Mitigation: cdxgen version is pinned and audited before updates.
+          # Consider: Run SBOM job with minimal secrets access.
           allowed-endpoints: >
             api.github.com:443
             artifactcache.actions.githubusercontent.com:443
@@ -470,16 +479,10 @@ jobs:
 
       - name: Install cosign
         if: ${{ !inputs.dry_run && inputs.sign_blobs }}
-        env:
-          COSIGN_VERSION: ${{ needs.load_versions.outputs.cosign_version }}
-          COSIGN_SHA256: ${{ needs.load_versions.outputs.cosign_sha256 }}
-        run: |
-          set -euo pipefail
-          curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
-            --proto '=https' --proto-redir '=https' --max-redirs 1 \
-            -o cosign "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
-          echo "${COSIGN_SHA256}  cosign" | sha256sum -c -
-          install -m 0755 cosign /usr/local/bin/cosign
+        uses: ./.github/actions/install-cosign
+        with:
+          version: ${{ needs.load_versions.outputs.cosign_version }}
+          sha256: ${{ needs.load_versions.outputs.cosign_sha256 }}
 
       - name: Setup Node (for cdxgen)
         if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}

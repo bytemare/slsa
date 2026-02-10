@@ -120,9 +120,9 @@ You can optionally add **custom metadata** for compliance tracking, auditing con
 ```yaml
 jobs:
   verify-release:
-    uses: bytemare/slsa/.github/workflows/verify.yaml@v1.0.0
+    uses: bytemare/slsa/.github/workflows/verify.yaml@[pinned commit SHA]
     with:
-      workflow_ref: v1.0.0
+      workflow_ref: [pinned commit SHA]
       tag: v2.3.0
       mode: full
       emit_vsa: true
@@ -140,7 +140,7 @@ jobs:
 The resulting VSA will contain:
 
 ```text
-workflow_ref=v1.0.0
+workflow_ref=[pinned commit SHA]
 script_sha=abc123...
 environment=production
 compliance_framework=SOC2
