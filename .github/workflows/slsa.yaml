@@ -381,7 +381,7 @@ jobs:
         id: sbom_lang
         env:
           SBOM_LANGUAGE: ${{ inputs.sbom_language }}
-          TARBALL_NAME: ${{ needs.package_source.outputs.artifact_filename }}
+          TARBALL_NAME: ${{ needs.package_source.outputs.artifact_path }}
         run: |
           set -euo pipefail
           lang="${SBOM_LANGUAGE:-auto}"
@@ -399,7 +399,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p sbom-workspace
-          tar -xzf "${{ needs.package_source.outputs.artifact_filename }}" -C sbom-workspace --strip-components=1
+          tar -xzf "${{ needs.package_source.outputs.artifact_path }}" -C sbom-workspace --strip-components=1
 
       - name: Generate CycloneDX SBOM (generic)
         if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
