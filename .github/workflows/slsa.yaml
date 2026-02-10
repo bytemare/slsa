@@ -351,14 +351,101 @@ jobs:
   # ===============================================================
   # SBOM generation, attestations, and release publishing
   # ===============================================================
-  sbom_and_release:
-    name: SBOM + Attest + Publish
+  generate_sbom:
+    name: Generate SBOM
     needs: [load_versions, package_source]
     if: ${{ inputs.dry_run || github.ref_type == 'tag' }}
     runs-on: ubuntu-latest
-    # Timeout considerations mainly depend on SBOM generation with cdxgen and npm registry latency.
-    # 20 minutes sounds like plenty of time, but increase to 30 if large repos regularly timeout.
-    timeout-minutes: 20
+    # Timeout: SBOM generation with cdxgen container (expected: 5-10 min for large repos)
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76
+        with:
+          disable-sudo: true
+          egress-policy: block
+          # Docker container pull for cdxgen
+          allowed-endpoints: >
+            ghcr.io:443
+            pkg-containers.githubusercontent.com:443
+
+      - name: Download packaged source
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          name: ${{ needs.package_source.outputs.tarball_name }}
+          path: .
+
+      - name: Detect SBOM language
+        id: sbom_lang
+        env:
+          SBOM_LANGUAGE: ${{ inputs.sbom_language }}
+          TARBALL_NAME: ${{ needs.package_source.outputs.tarball_name }}
+        run: |
+          set -euo pipefail
+          lang="${SBOM_LANGUAGE:-auto}"
+          if [[ "$lang" == "auto" ]]; then
+            if tar -tzf "$TARBALL_NAME" | grep -q '^[^/]*/go.mod$'; then
+              lang="go"
+            else
+              lang="generic"
+            fi
+          fi
+          echo "lang=${lang}" >> "$GITHUB_OUTPUT"
+          echo "[INFO] Detected SBOM language: ${lang}" >&2
+
+      - name: Extract source for SBOM generation
+        run: |
+          set -euo pipefail
+          mkdir -p sbom-workspace
+          tar -xzf "${{ needs.package_source.outputs.tarball_name }}" -C sbom-workspace --strip-components=1
+
+      - name: Generate CycloneDX SBOM (generic)
+        if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
+        env:
+          CDXGEN_VERSION: ${{ needs.load_versions.outputs.cdxgen_version }}
+        run: |
+          set -euo pipefail
+          version="${CDXGEN_VERSION:-v12.0.0}"
+          image="ghcr.io/cyclonedx/cdxgen:${version}"
+          
+          echo "[INFO] Generating SBOM with cdxgen container: ${image}" >&2
+          docker run --rm \
+            -v "$PWD/sbom-workspace:/app" \
+            -w /app \
+            "${image}" \
+            -o /app/sbom.cdx.json \
+            /app
+          
+          mv sbom-workspace/sbom.cdx.json sbom.cdx.json
+          echo "[INFO] SBOM generated successfully" >&2
+
+      - name: Generate CycloneDX SBOM (Go modules)
+        if: ${{ steps.sbom_lang.outputs.lang == 'go' }}
+        uses: CycloneDX/gh-gomod-generate-sbom@171199f37bbd0f611db19484319e87d2ee441f97
+        with:
+          version: 1
+          args: mod -licenses -json -output sbom.cdx.json sbom-workspace
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@ea0624c7db7c1c9a40040a4975b63e04e9eed06c
+        with:
+          name: sbom-cdx-json
+          path: sbom.cdx.json
+          retention-days: 1
+          if-no-files-found: error
+
+  # ===============================================================
+  # SBOM attestation and release publishing
+  # ===============================================================
+  sbom_and_release:
+    name: Attest + Publish
+    needs: [load_versions, package_source, generate_sbom]
+    if: ${{ inputs.dry_run || github.ref_type == 'tag' }}
+    runs-on: ubuntu-latest
+    # Timeout: Attestation and publishing (expected: 5-10 min)
+    timeout-minutes: 15
     container:
       image: ${{ needs.load_versions.outputs.builder_image }}
     permissions:
@@ -373,20 +460,17 @@ jobs:
         with:
           disable-sudo: true
           egress-policy: block
-          # Security Note: SBOM generation uses cdxgen container (ghcr.io) instead of npm.
-          # This eliminates npm registry access while maintaining multi-language support.
-          # Container digest is pinned in tool-versions.json for reproducibility.
+          # Security Note: SBOM generated in separate job using cdxgen container.
+          # No npm registry access required in this job.
           allowed-endpoints: >
             api.github.com:443
             artifactcache.actions.githubusercontent.com:443
             ctfe.sigstore.dev:443
             fulcio.sigstore.dev:443
-            ghcr.io:443
             github.com:443
             oauth2.sigstore.dev:443
             objects.githubusercontent.com:443
             pipelines.actions.githubusercontent.com:443
-            pkg-containers.githubusercontent.com:443
             proxy.golang.org:443
             rekor.sigstore.dev:443
             release-assets.githubusercontent.com:443
@@ -471,6 +555,12 @@ jobs:
             echo "metadata_path=package/verification.json"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Download SBOM
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          name: sbom-cdx-json
+          path: .
+
       - name: Install cosign
         if: ${{ !inputs.dry_run && inputs.sign_blobs }}
         shell: bash
@@ -496,33 +586,6 @@ jobs:
           echo "${COSIGN_SHA256}  cosign" | sha256sum -c -
           install -m 0755 cosign /usr/local/bin/cosign
           echo "[DEBUG] Successfully installed Cosign ${COSIGN_VERSION}" >&2
-
-      - name: Generate CycloneDX SBOM (generic)
-        if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
-        env:
-          CDXGEN_VERSION: ${{ needs.load_versions.outputs.cdxgen_version }}
-        run: |
-          set -euo pipefail
-          # Use container-based cdxgen
-          version="${CDXGEN_VERSION:-v12.0.0}"
-          image="ghcr.io/cyclonedx/cdxgen:${version}"
-          
-          echo "[INFO] Generating SBOM with cdxgen container: ${image}" >&2
-          docker run --rm \
-            -v "$PWD:/app" \
-            -w /app \
-            "${image}" \
-            -o /app/sbom.cdx.json \
-            /app
-          
-          echo "[INFO] SBOM generated successfully" >&2
-
-      - name: Generate CycloneDX SBOM (Go modules)
-        if: ${{ steps.sbom_lang.outputs.lang == 'go' }}
-        uses: CycloneDX/gh-gomod-generate-sbom@171199f37bbd0f611db19484319e87d2ee441f97
-        with:
-          version: 1
-          args: mod -licenses -json -output sbom.cdx.json .
 
       - name: Attest SBOM (bind SBOM to tarball digest)
         if: ${{ !inputs.dry_run }}

@@ -187,7 +187,7 @@ jobs:
       security-events: write   # Upload SARIF (optional)
 ```
 
-`packaging_language=auto` detects `go.mod` in the tagged commit and enables Go-specific metadata only when present. `sbom_language=auto` uses the Go SBOM generator when `go.mod` exists, otherwise it runs cdxgen (pin `cdxgen_version` for deterministic output).
+`packaging_language=auto` detects `go.mod` in the tagged commit and enables Go-specific metadata only when present. `sbom_language=auto` uses the Go SBOM generator when `go.mod` exists, otherwise it runs cdxgen via container (pin `cdxgen_version` for deterministic output).
 
 ### Inform your users
 

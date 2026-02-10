@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 For releases prior to this changelog, see [GitHub Releases](https://github.com/bytemare/ecc/releases).
 
+## [Unreleased]
+
+### Added
+- Conditional DEBUG logging with GitHub Actions collapsible groups
+- Input validation for verifier_metadata to prevent injection attacks
+- Required/optional file handling in download functions with proper error reporting
+
+### Changed
+- **BREAKING**: Switched cdxgen to container-based approach (docker required)
+  - Uses digest-pinned ghcr.io/cyclonedx/cdxgen container
+  - Eliminates npm registry from egress policy
+  - SBOM generation now runs in dedicated job with docker access
+  - Maintains full multi-language SBOM support
+- gh CLI installation now uses dynamic version from tool-versions.json (previously hardcoded v2.40.1)
+- VSA verification retry window increased from 30s to 100s to handle CDN propagation delays
+- PR verification workflow now dynamically discovers latest release
+
+### Fixed
+- Silent downloads now properly detected and reported
+
+### Removed
+- Unused load-tool-versions composite action
+
+### Security
+- Eliminated npm registry access in SBOM generation (pure container-based approach)
+- Added regex validation for verifier_metadata input
+
 ## v0.2.0 - 8/2/2026
 
 ### Added

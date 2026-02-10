@@ -162,6 +162,7 @@ debug() {
 }
 
 # Close debug group at exit in GitHub Actions
+# shellcheck disable=SC2329  # Function invoked via trap in cleanup()
 cleanup_debug_groups() {
     if [[ "${GITHUB_ACTIONS:-false}" == "true" && "$_GHA_GROUP_OPEN" == "true" ]]; then
         echo "::endgroup::" >&2
@@ -1163,7 +1164,6 @@ ok
 info "Downloading ${ARTIFACT_NAME}"
 mkdir -p "$(dirname "$ARTIFACT_NAME")"
 artifact_url="https://github.com/${REPO}/releases/download/${TAG}/${ARTIFACT_NAME}"
-debug "Downloading artifact from: ${artifact_url}"
 if ! curl -sSL -o "$ARTIFACT_NAME" "${artifact_url}" 2>&1; then
     http_code=$(curl -sI -o /dev/null -w "%{http_code}" "${artifact_url}" 2>&1)
     echo "[ERROR] Failed to download artifact from: ${artifact_url}" >&2
@@ -1199,12 +1199,10 @@ umask 022
 set +e
 PACKAGING_SCRIPT=""
 SCRIPT_URL="https://github.com/${REPO}/releases/download/${TAG}/package-source.sh"
-debug "Attempting to download packaging script from: ${SCRIPT_URL}"
 if curl -sSL -o package-source.sh "$SCRIPT_URL" 2>&1; then
     chmod +x package-source.sh
     PACKAGING_SCRIPT="./package-source.sh"
 elif [[ -f scripts/package-source.sh ]]; then
-    debug "Using local packaging script: scripts/package-source.sh"
     PACKAGING_SCRIPT="scripts/package-source.sh"
 else
     http_code=$(curl -sI -o /dev/null -w "%{http_code}" "${SCRIPT_URL}" 2>&1)
