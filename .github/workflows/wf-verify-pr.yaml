@@ -23,7 +23,7 @@ jobs:
   Verification:
     if: ${{ github.event_name == 'pull_request' }}
     permissions:
-      contents: read
+      contents: write
       id-token: write
     uses: ./.github/workflows/verify.yaml
     with:
