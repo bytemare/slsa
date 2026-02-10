@@ -412,13 +412,12 @@ jobs:
           
           echo "[INFO] Generating SBOM with cdxgen container: ${image}" >&2
           docker run --rm \
-            -v "$PWD/sbom-workspace:/app" \
-            -w /app \
+            -v "$PWD/sbom-workspace:/app:ro" \
+            -w /tmp \
             "${image}" \
-            -o /app/sbom.cdx.json \
-            /app
+            -o /tmp/sbom.cdx.json \
+            /app > sbom.cdx.json
           
-          mv sbom-workspace/sbom.cdx.json sbom.cdx.json
           echo "[INFO] SBOM generated successfully" >&2
 
       - name: Generate CycloneDX SBOM (Go modules)
