@@ -374,14 +374,14 @@ jobs:
       - name: Download packaged source
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
         with:
-          name: ${{ needs.package_source.outputs.tarball_name }}
+          name: ${{ needs.package_source.outputs.artifact_filename }}
           path: .
 
       - name: Detect SBOM language
         id: sbom_lang
         env:
           SBOM_LANGUAGE: ${{ inputs.sbom_language }}
-          TARBALL_NAME: ${{ needs.package_source.outputs.tarball_name }}
+          TARBALL_NAME: ${{ needs.package_source.outputs.artifact_filename }}
         run: |
           set -euo pipefail
           lang="${SBOM_LANGUAGE:-auto}"
@@ -399,7 +399,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p sbom-workspace
-          tar -xzf "${{ needs.package_source.outputs.tarball_name }}" -C sbom-workspace --strip-components=1
+          tar -xzf "${{ needs.package_source.outputs.artifact_filename }}" -C sbom-workspace --strip-components=1
 
       - name: Generate CycloneDX SBOM (generic)
         if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
