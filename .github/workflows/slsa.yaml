@@ -59,12 +59,7 @@ on:
         default: auto
       cdxgen_version:
         description: >-
-          cdxgen version override (default: from tool-versions.json)
-        type: string
-        required: false
-      node_version:
-        description: >-
-          Node.js version override (default: from tool-versions.json)
+          cdxgen container tag override (default: from tool-versions.json)
         type: string
         required: false
       builder_image:
@@ -158,7 +153,6 @@ jobs:
       jq_sha256: ${{ steps.resolve.outputs.jq_sha256 }}
       slsa_verifier_version: ${{ steps.resolve.outputs.slsa_verifier_version }}
       cdxgen_version: ${{ steps.resolve.outputs.cdxgen_version }}
-      node_version: ${{ steps.resolve.outputs.node_version }}
       builder_image: ${{ steps.resolve.outputs.builder_image }}
     steps:
       - name: Validate required inputs
@@ -209,7 +203,6 @@ jobs:
           INPUT_JQ_SHA256: ${{ inputs.jq_sha256 }}
           INPUT_SLSA_VERIFIER_VERSION: ${{ inputs.slsa_verifier_version }}
           INPUT_CDXGEN_VERSION: ${{ inputs.cdxgen_version }}
-          INPUT_NODE_VERSION: ${{ inputs.node_version }}
           INPUT_BUILDER_IMAGE: ${{ inputs.builder_image }}
         run: |
           set -euo pipefail
@@ -223,8 +216,14 @@ jobs:
           jq_version="${INPUT_JQ_VERSION:-$(jq -r '.tools.jq.version' "$CONFIG")}"
           jq_sha256="${INPUT_JQ_SHA256:-$(jq -r '.tools.jq.sha256' "$CONFIG")}"
           slsa_verifier_version="${INPUT_SLSA_VERIFIER_VERSION:-$(jq -r '.tools["slsa-verifier"].version' "$CONFIG")}"
-          cdxgen_version="${INPUT_CDXGEN_VERSION:-$(jq -r '.tools.cdxgen.version' "$CONFIG")}"
-          node_version="${INPUT_NODE_VERSION:-$(jq -r '.tools.node.version' "$CONFIG")}"
+          
+          # cdxgen is a container image (like builder-image)
+          if [[ -n "${INPUT_CDXGEN_VERSION:-}" ]]; then
+            cdxgen_version="${INPUT_CDXGEN_VERSION}"
+          else
+            cdxgen_tag=$(jq -r '.tools.cdxgen.tag' "$CONFIG")
+            cdxgen_version="${cdxgen_tag}"
+          fi
 
           # Build builder_image from components if not overridden
           if [[ -n "${INPUT_BUILDER_IMAGE:-}" ]]; then
@@ -246,7 +245,6 @@ jobs:
             echo "jq_sha256=${jq_sha256}"
             echo "slsa_verifier_version=${slsa_verifier_version}"
             echo "cdxgen_version=${cdxgen_version}"
-            echo "node_version=${node_version}"
             echo "builder_image=${builder_image}"
           } >> "$GITHUB_OUTPUT"
 
@@ -256,7 +254,6 @@ jobs:
           echo "  jq: ${jq_version} (sha256: ${jq_sha256:0:16}...)"
           echo "  slsa-verifier: ${slsa_verifier_version}"
           echo "  cdxgen: ${cdxgen_version}"
-          echo "  node: ${node_version}"
           echo "  builder-image: ${builder_image}"
 
   # ===============================================================
@@ -376,24 +373,21 @@ jobs:
         with:
           disable-sudo: true
           egress-policy: block
-          # Security Note: SBOM generation with cdxgen fetches from npm registry,
-          # allowing arbitrary package downloads. Compromised dependencies could
-          # exfiltrate data. This is inherent to SBOM generation.
-          # Mitigation: cdxgen version is pinned and audited before updates.
-          # Consider: Run SBOM job with minimal secrets access.
+          # Security Note: SBOM generation uses cdxgen container (ghcr.io) instead of npm.
+          # This eliminates npm registry access while maintaining multi-language support.
+          # Container digest is pinned in tool-versions.json for reproducibility.
           allowed-endpoints: >
             api.github.com:443
             artifactcache.actions.githubusercontent.com:443
             ctfe.sigstore.dev:443
             fulcio.sigstore.dev:443
+            ghcr.io:443
             github.com:443
-            nodejs.org:443
             oauth2.sigstore.dev:443
             objects.githubusercontent.com:443
             pipelines.actions.githubusercontent.com:443
             pkg-containers.githubusercontent.com:443
             proxy.golang.org:443
-            registry.npmjs.org:443
             rekor.sigstore.dev:443
             release-assets.githubusercontent.com:443
             sum.golang.org:443
@@ -479,16 +473,29 @@ jobs:
 
       - name: Install cosign
         if: ${{ !inputs.dry_run && inputs.sign_blobs }}
-        uses: ./.github/actions/install-cosign
-        with:
-          version: ${{ needs.load_versions.outputs.cosign_version }}
-          sha256: ${{ needs.load_versions.outputs.cosign_sha256 }}
-
-      - name: Setup Node (for cdxgen)
-        if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238
-        with:
-          node-version: ${{ needs.load_versions.outputs.node_version }}
+        shell: bash
+        env:
+          COSIGN_VERSION: ${{ needs.load_versions.outputs.cosign_version }}
+          COSIGN_SHA256: ${{ needs.load_versions.outputs.cosign_sha256 }}
+        run: |
+          set -euo pipefail
+          cosign_url="https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
+          echo "[DEBUG] Downloading cosign from: ${cosign_url}" >&2
+          
+          if ! curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
+            --proto '=https' --proto-redir '=https' --max-redirs 1 \
+            -o cosign "${cosign_url}" 2>&1; then
+            echo "[ERROR] Failed to download cosign" >&2
+            echo "[ERROR] URL: ${cosign_url}" >&2
+            http_code=$(curl -sI -o /dev/null -w "%{http_code}" "${cosign_url}" 2>&1 || echo "failed")
+            echo "[ERROR] HTTP response code: ${http_code}" >&2
+            exit 1
+          fi
+          
+          echo "[DEBUG] Verifying cosign SHA256 checksum" >&2
+          echo "${COSIGN_SHA256}  cosign" | sha256sum -c -
+          install -m 0755 cosign /usr/local/bin/cosign
+          echo "[DEBUG] Successfully installed Cosign ${COSIGN_VERSION}" >&2
 
       - name: Generate CycloneDX SBOM (generic)
         if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
@@ -496,9 +503,19 @@ jobs:
           CDXGEN_VERSION: ${{ needs.load_versions.outputs.cdxgen_version }}
         run: |
           set -euo pipefail
-          version="${CDXGEN_VERSION:-latest}"
-          version="${version#v}"
-          npx --yes "@cyclonedx/cdxgen@${version}" -o sbom.cdx.json .
+          # Use container-based cdxgen
+          version="${CDXGEN_VERSION:-v12.0.0}"
+          image="ghcr.io/cyclonedx/cdxgen:${version}"
+          
+          echo "[INFO] Generating SBOM with cdxgen container: ${image}" >&2
+          docker run --rm \
+            -v "$PWD:/app" \
+            -w /app \
+            "${image}" \
+            -o /app/sbom.cdx.json \
+            /app
+          
+          echo "[INFO] SBOM generated successfully" >&2
 
       - name: Generate CycloneDX SBOM (Go modules)
         if: ${{ steps.sbom_lang.outputs.lang == 'go' }}

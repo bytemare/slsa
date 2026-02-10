@@ -380,7 +380,6 @@ When [Renovate](https://docs.renovatebot.com/) detects a new tool version, it op
 4. Commits the change to the PR
 
 This keeps hashes synchronized with versions while maintaining full auditability—all hash changes are visible in PR diffs.
-
 ### Industry Alignment
 
 This approach follows patterns used by security-focused projects:

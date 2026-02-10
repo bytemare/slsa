@@ -21,12 +21,10 @@
       "version": "v2.7.1"
     },
     "cdxgen": {
-      "$comment": "CycloneDX SBOM generator",
-      "version": "v12.0.0"
-    },
-    "node": {
-      "$comment": "Node.js runtime for cdxgen",
-      "version": "24.13.0"
+      "$comment": "CycloneDX SBOM generator (multi-language support). Using container to avoid npm registry access.",
+      "image": "ghcr.io/cyclonedx/cdxgen",
+      "tag": "v12.0.0",
+      "digest": "sha256:8b2c6973fa0cb1f1277838b383dfe2b83cdd246be88ac98dbc1be63cce8502ce"
     },
     "builder-image": {
       "$comment": "Container image for reproducible builds. Digest MUST match verify-release.sh REPRO_IMAGE_DEFAULT",

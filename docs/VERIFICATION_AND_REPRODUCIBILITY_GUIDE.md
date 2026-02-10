@@ -62,7 +62,7 @@ These guarantees are what the verification and reproduction steps validate. The 
 | `checksums.txt`                                       | Aggregated SHA-256 checksums (convenience verification)                  | L3 (secondary subject); structured manifest for higher-level use  |
 | `<repo>-<tag>.tar.gz.{sig,cert,bundle}`               | Cosign signatures for tarball                                            | L3 (authenticity via Sigstore transparency)                       |
 | `checksums.txt.{sig,cert,bundle}`                     | Cosign signatures for checksums manifest                                 | L3 (signed integrity manifest)                                    |
-| `sbom.cdx.json`                                       | CycloneDX SBOM (via cdxgen, gh-gomod for Go modules)                     | L3 (attested via GitHub attestations)                             |
+| `sbom.cdx.json`                                       | CycloneDX SBOM (via cdxgen container, gh-gomod for Go modules)           | L3 (attested via GitHub attestations)                             |
 | `sbom.cdx.json.{sig,cert,bundle}`                     | Cosign signatures for SBOM                                               | L3 (signed dependency manifest)                                   |
 | `*.intoto.jsonl`                                      | SLSA Level 3 provenance attestation                                      | L3 (required non-falsifiable provenance)                          |
 | `manifest.files.sha256`                               | Per-file SHA-256 (content-addressed mapping)                             | Supplemental reproducibility aid (future Level 4 readiness)       |
