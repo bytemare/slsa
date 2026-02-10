@@ -182,6 +182,7 @@ jobs:
           allowed-endpoints: >
             api.github.com:443
             artifactcache.actions.githubusercontent.com:443
+            auth.docker.io:443
             github.com:443
             objects.githubusercontent.com:443
             pkg-containers.githubusercontent.com:443
