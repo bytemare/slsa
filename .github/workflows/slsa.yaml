@@ -429,7 +429,7 @@ jobs:
           args: mod -licenses -json -output sbom.cdx.json sbom-workspace
 
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@ea0624c7db7c1c9a40040a4975b63e04e9eed06c
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: sbom-cdx-json
           path: sbom.cdx.json

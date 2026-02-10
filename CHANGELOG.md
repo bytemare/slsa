@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 For releases prior to this changelog, see [GitHub Releases](https://github.com/bytemare/ecc/releases).
 
-## [Unreleased]
+## v0.3.0 - 10/2/2026
 
 ### Added
 - Conditional DEBUG logging with GitHub Actions collapsible groups
