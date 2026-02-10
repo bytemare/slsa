@@ -14,11 +14,8 @@ name: Test Verify SLSA Compliance
 
 on:
   pull_request:
-    paths:
-      - .github/workflows/verify.yaml
-      - .github/workflows/wf-verify.yaml
-      - .github/workflows/slsa.yaml
-      - verify-release.sh
+    branches:
+      - main
 
 permissions: {}
 
