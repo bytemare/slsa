@@ -261,7 +261,7 @@ jobs:
           echo "  builder-image: ${builder_image}"
 
       - name: Cache builder Docker image
-        uses: actions/cache@69d4ced2a141d2dfc8937a1b0e13ffe35d6edd2c # v4.2.1
+        uses: actions/cache@b7e8d49f17405cc70c1c120101943203c98d3a4b # v4.2.1
         with:
           path: /tmp/builder-image.tar
           key: builder-${{ steps.resolve.outputs.builder_image }}
@@ -424,7 +424,7 @@ jobs:
 
       - name: Cache cdxgen Docker image
         if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
-        uses: actions/cache@69d4ced2a141d2dfc8937a1b0e13ffe35d6edd2c # v4.2.1
+        uses: actions/cache@b7e8d49f17405cc70c1c120101943203c98d3a4b # v4.2.1
         with:
           path: /tmp/cdxgen-image.tar
           key: cdxgen-${{ needs.load_versions.outputs.cdxgen_version }}
