@@ -366,8 +366,9 @@ jobs:
         with:
           disable-sudo: true
           egress-policy: block
-          # Docker container pull for cdxgen
+          # Docker container pull for cdxgen (cached via actions/cache)
           allowed-endpoints: >
+            artifactcache.actions.githubusercontent.com:443
             ghcr.io:443
             pkg-containers.githubusercontent.com:443
 
@@ -394,6 +395,32 @@ jobs:
           fi
           echo "lang=${lang}" >> "$GITHUB_OUTPUT"
           echo "[INFO] Detected SBOM language: ${lang}" >&2
+
+      - name: Cache cdxgen Docker image
+        if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
+        uses: actions/cache@69d4ced2a141d2dfc8937a1b0e13ffe35d6edd2c # v4.2.1
+        with:
+          path: /tmp/cdxgen-image.tar
+          key: cdxgen-${{ needs.load_versions.outputs.cdxgen_version }}
+
+      - name: Load or pull cdxgen image
+        if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
+        env:
+          CDXGEN_VERSION: ${{ needs.load_versions.outputs.cdxgen_version }}
+        run: |
+          set -euo pipefail
+          version="${CDXGEN_VERSION:-v12.0.0}"
+          image="ghcr.io/cyclonedx/cdxgen:${version}"
+          
+          if [[ -f /tmp/cdxgen-image.tar ]]; then
+            echo "[INFO] Loading cached cdxgen image" >&2
+            docker load -i /tmp/cdxgen-image.tar
+          else
+            echo "[INFO] Pulling cdxgen image: ${image}" >&2
+            docker pull "${image}"
+            echo "[INFO] Saving image to cache" >&2
+            docker save "${image}" -o /tmp/cdxgen-image.tar
+          fi
 
       - name: Extract source for SBOM generation
         run: |
