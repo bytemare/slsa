@@ -181,8 +181,12 @@ jobs:
           egress-policy: block
           allowed-endpoints: >
             api.github.com:443
+            artifactcache.actions.githubusercontent.com:443
             github.com:443
             objects.githubusercontent.com:443
+            pkg-containers.githubusercontent.com:443
+            production.cloudflare.docker.com:443
+            registry-1.docker.io:443
 
       - name: Checkout workflow repo
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
@@ -255,6 +259,28 @@ jobs:
           echo "  slsa-verifier: ${slsa_verifier_version}"
           echo "  cdxgen: ${cdxgen_version}"
           echo "  builder-image: ${builder_image}"
+
+      - name: Cache builder Docker image
+        uses: actions/cache@69d4ced2a141d2dfc8937a1b0e13ffe35d6edd2c # v4.2.1
+        with:
+          path: /tmp/builder-image.tar
+          key: builder-${{ steps.resolve.outputs.builder_image }}
+
+      - name: Load or pull builder image
+        env:
+          BUILDER_IMAGE: ${{ steps.resolve.outputs.builder_image }}
+        run: |
+          set -euo pipefail
+          
+          if [[ -f /tmp/builder-image.tar ]]; then
+            echo "[INFO] Loading cached builder image" >&2
+            docker load -i /tmp/builder-image.tar
+          else
+            echo "[INFO] Pulling builder image: ${BUILDER_IMAGE}" >&2
+            docker pull "${BUILDER_IMAGE}"
+            echo "[INFO] Saving image to cache" >&2
+            docker save "${BUILDER_IMAGE}" -o /tmp/builder-image.tar
+          fi
 
   # ===============================================================
   # Hermetic source packaging (offline, containerized)

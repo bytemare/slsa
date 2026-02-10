@@ -10,7 +10,7 @@
 
 ---
 
-name: Test Verify SLSA Compliance
+name: Test Release Verification in PR
 
 on:
   pull_request:
