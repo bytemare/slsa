@@ -109,7 +109,7 @@ set -euo pipefail
 
 # Default container image used for rebuild verification (matches CI builder digest).
 # The reproduce mode prefers the value recorded in build.env but falls back to this.
-readonly REPRO_IMAGE_DEFAULT="golang:1.25-bookworm@sha256:42d8e9dea06f23d0bfc908826455213ee7f3ed48c43e287a422064220c501be9"
+readonly REPRO_IMAGE_DEFAULT="golang:1.25-bookworm@sha256:51b6b12427dc03451c24f7fc996c43a20e8a8e56f0849dd0db6ff6e9225cc892"
 
 # ===========================================================================
 # Color Support (respects NO_COLOR)
@@ -1121,12 +1121,16 @@ else
     echo "[ERROR] Also checked: scripts/package-source.sh (not found)" >&2
     fail "Packaging script not found (expected release asset package-source.sh)"
 fi
-if [[ -n "$EXPECTED_SCRIPT_SHA" && "$EXPECTED_SCRIPT_SHA" != "unknown" ]]; then
-    script_digest=$(sha256sum "$PACKAGING_SCRIPT" | awk '{print $1}')
-    if [[ "$script_digest" != "$EXPECTED_SCRIPT_SHA" ]]; then
-        fail "Packaging script digest mismatch (expected $EXPECTED_SCRIPT_SHA, got $script_digest)"
-    fi
+# Mandatory integrity check to prevent arbitrary code execution
+if [[ -z "$EXPECTED_SCRIPT_SHA" || "$EXPECTED_SCRIPT_SHA" == "unknown" ]]; then
+    fail "Cannot verify packaging script integrity - SHA missing from build.env. This prevents arbitrary code execution."
 fi
+
+script_digest=$(sha256sum "$PACKAGING_SCRIPT" | awk '{print $1}')
+if [[ "$script_digest" != "$EXPECTED_SCRIPT_SHA" ]]; then
+    fail "Packaging script digest mismatch (expected $EXPECTED_SCRIPT_SHA, got $script_digest)"
+fi
+echo "  ✓ Packaging script integrity verified (SHA: ${script_digest:0:16}...)" >&2
 
 packaging_log=$(mktemp)
 bash "$PACKAGING_SCRIPT" >"$packaging_log" 2>&1

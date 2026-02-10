@@ -161,12 +161,7 @@ jobs:
             exit 0
           fi
 
-          api_token="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
-          if [[ -z "$api_token" ]]; then
-            echo "Missing GitHub token for API calls." >&2
-            exit 1
-          fi
-
+          # Use gh api for secure token handling (prevents token exposure in logs)
           if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
             latest_commit_sha="${PR_HEAD_SHA}"
             target_ref="${PR_HEAD_REF}"
@@ -182,36 +177,41 @@ jobs:
 
           file_content_b64=$(base64 < "${FILE}" | tr -d '\n')
 
-          blob_sha=$(curl -sSfL \
+          blob_sha=$(gh api \
+            -X POST \
             -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${api_token}" \
-            -d "$(jq -n --arg content "$file_content_b64" '{content: $content, encoding: "base64"}')" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/blobs" \
-            | jq -r '.sha')
+            "/repos/${GITHUB_REPOSITORY}/git/blobs" \
+            -f content="$file_content_b64" \
+            -f encoding="base64" \
+            --jq '.sha')
 
           if [[ -z "$blob_sha" || "$blob_sha" == "null" ]]; then
             echo "Unable to create blob for ${FILE}." >&2
             exit 1
           fi
 
-          base_tree_sha=$(curl -sSfL \
+          base_tree_sha=$(gh api \
             -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${api_token}" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/commits/${latest_commit_sha}" \
-            | jq -r '.tree.sha')
+            "/repos/${GITHUB_REPOSITORY}/git/commits/${latest_commit_sha}" \
+            --jq '.tree.sha')
 
           if [[ -z "$base_tree_sha" || "$base_tree_sha" == "null" ]]; then
             echo "Unable to resolve base tree SHA." >&2
             exit 1
           fi
 
-          tree_hash=$(curl -sSfL \
+          tree_payload=$(jq -n \
+            --arg base "$base_tree_sha" \
+            --arg path "$FILE" \
+            --arg sha "$blob_sha" \
+            '{base_tree: $base, tree: [{path: $path, mode: "100644", type: "blob", sha: $sha}]}')
+
+          tree_hash=$(gh api \
+            -X POST \
             -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${api_token}" \
-            -d "$(jq -n --arg base "$base_tree_sha" --arg path "$FILE" --arg sha "$blob_sha" \
-              '{base_tree: $base, tree: [{path: $path, mode: "100644", type: "blob", sha: $sha}] }')" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/trees" \
-            | jq -r '.sha')
+            "/repos/${GITHUB_REPOSITORY}/git/trees" \
+            --input - \
+            --jq '.sha' <<< "$tree_payload")
 
           if [[ -z "$tree_hash" || "$tree_hash" == "null" ]]; then
             echo "Unable to create tree for ${FILE}." >&2
@@ -224,17 +224,18 @@ jobs:
           user_id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)
           commit_message=$'chore: refresh tool hashes\n\nSigned-off-by: '"${author_name} <${user_id}+${author_email}>"
 
-          commit=$(curl -sSfL \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${api_token}" \
-            -d "$(jq -n \
-              --arg message "$commit_message" \
-              --arg tree "$tree_hash" \
-              --arg parent "$latest_commit_sha" \
-              '{message: $message, tree: $tree, parents: [$parent]}')" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/commits")
+          commit_payload=$(jq -n \
+            --arg message "$commit_message" \
+            --arg tree "$tree_hash" \
+            --arg parent "$latest_commit_sha" \
+            '{message: $message, tree: $tree, parents: [$parent]}')
 
-          commit_sha="$(jq -r '.sha' <<< "$commit")"
+          commit_sha=$(gh api \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${GITHUB_REPOSITORY}/git/commits" \
+            --input - \
+            --jq '.sha' <<< "$commit_payload")
 
           if [[ -z "$commit_sha" || "$commit_sha" == "null" ]]; then
             echo "Commit creation failed; missing commit SHA." >&2
@@ -242,20 +243,19 @@ jobs:
           fi
 
           # Update the reference of the target branch to point to the new commit
-          curl -sSfL --request PATCH \
+          gh api \
+            -X PATCH \
             -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${api_token}" \
-            -d "$(jq -n --arg sha "$commit_sha" '{sha: $sha}')" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/refs/heads/${target_ref}"
+            "/repos/${GITHUB_REPOSITORY}/git/refs/heads/${target_ref}" \
+            -f sha="$commit_sha" > /dev/null
 
           commit_verified="false"
           for _ in 1 2 3 4 5; do
             sleep 2
-            commit_verified="$(curl -sSfL \
+            commit_verified="$(gh api \
               -H "Accept: application/vnd.github+json" \
-              -H "Authorization: Bearer ${api_token}" \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/commits/${commit_sha}" \
-              | jq -r '.commit.verification.verified // "false"')"
+              "/repos/${GITHUB_REPOSITORY}/commits/${commit_sha}" \
+              --jq '.commit.verification.verified // "false"')"
             if [[ "${commit_verified}" == "true" ]]; then
               break
             fi
