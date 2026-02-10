@@ -214,6 +214,7 @@ jobs:
   # Run verification modes
   # ===============================================================
   verify:
+    name:  Run verification modes
     needs: load_versions
     runs-on: ubuntu-latest
     timeout-minutes: 30
