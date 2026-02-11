@@ -264,7 +264,7 @@ jobs:
       - name: Cache builder Docker image
         uses: actions/cache@b7e8d49f17405cc70c1c120101943203c98d3a4b # v4.2.1
         with:
-          path: /tmp/builder-image.tar
+          path: builder-image.tar
           key: builder-${{ steps.resolve.outputs.builder_image }}
 
       - name: Load or pull builder image
@@ -273,14 +273,14 @@ jobs:
         run: |
           set -euo pipefail
           
-          if [[ -f /tmp/builder-image.tar ]]; then
+          if [[ -f builder-image.tar ]]; then
             echo "[INFO] Loading cached builder image" >&2
-            docker load -i /tmp/builder-image.tar
+            docker load -i builder-image.tar
           else
             echo "[INFO] Pulling builder image: ${BUILDER_IMAGE}" >&2
             docker pull "${BUILDER_IMAGE}"
             echo "[INFO] Saving image to cache" >&2
-            docker save "${BUILDER_IMAGE}" -o /tmp/builder-image.tar
+            docker save "${BUILDER_IMAGE}" -o builder-image.tar
           fi
 
   # ===============================================================
@@ -427,7 +427,7 @@ jobs:
         if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
         uses: actions/cache@b7e8d49f17405cc70c1c120101943203c98d3a4b # v4.2.1
         with:
-          path: /tmp/cdxgen-image.tar
+          path: cdxgen-image.tar
           key: cdxgen-${{ needs.load_versions.outputs.cdxgen_version }}
 
       - name: Load or pull cdxgen image
@@ -439,14 +439,14 @@ jobs:
           version="${CDXGEN_VERSION:-v12.0.0}"
           image="ghcr.io/cyclonedx/cdxgen:${version}"
           
-          if [[ -f /tmp/cdxgen-image.tar ]]; then
+          if [[ -f cdxgen-image.tar ]]; then
             echo "[INFO] Loading cached cdxgen image" >&2
-            docker load -i /tmp/cdxgen-image.tar
+            docker load -i cdxgen-image.tar
           else
             echo "[INFO] Pulling cdxgen image: ${image}" >&2
             docker pull "${image}"
             echo "[INFO] Saving image to cache" >&2
-            docker save "${image}" -o /tmp/cdxgen-image.tar
+            docker save "${image}" -o cdxgen-image.tar
           fi
 
       - name: Extract source for SBOM generation
