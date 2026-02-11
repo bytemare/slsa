@@ -270,6 +270,7 @@ jobs:
       - name: Load or pull builder image
         env:
           BUILDER_IMAGE: ${{ steps.resolve.outputs.builder_image }}
+          TMPDIR: ${{ github.workspace }}
         run: |
           set -euo pipefail
           
@@ -434,6 +435,7 @@ jobs:
         if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
         env:
           CDXGEN_VERSION: ${{ needs.load_versions.outputs.cdxgen_version }}
+          TMPDIR: ${{ github.workspace }}
         run: |
           set -euo pipefail
           version="${CDXGEN_VERSION:-v12.0.0}"
