@@ -133,7 +133,7 @@ For detailed configuration options, see [Release - How to Use the Workflow](#rel
 | `cosign` | Signature verification | [Install guide](https://docs.sigstore.dev/cosign/system_config/installation/) |
 | `gh` | GitHub API access (outside Actions) | [Install guide](https://cli.github.com/) |
 | `slsa-verifier` | `--mode full` | [Install guide](https://github.com/slsa-framework/slsa-verifier#installation) |
-| `docker` | `--mode reproduce` | [Install guide](https://docs.docker.com/get-docker/) |
+| `docker` | `--mode reproduce` (runs hermetically with `--network none`) | [Install guide](https://docs.docker.com/get-docker/) |
 
 ```bash
 # Show all options
@@ -242,8 +242,10 @@ chmod +x verify-release.sh
   entire release, ensuring that all the pieces of the puzzle (artifacts, signatures, attestations, provenance,
   and SBOM) fit together correctly, providing a much higher level of confidence in the integrity and
   authenticity of the release.
-- **reproduce** - Hermetic rebuild using the `SLSA_BUILDER_IMAGE` recorded in `build.env` (defaults to
-  `golang:1.25-bookworm@sha256:...`), yielding independent evidence for future Level 4 expectations.
+- **reproduce** - Hermetic rebuild in a network-isolated container (`--network none`) using the `SLSA_BUILDER_IMAGE` 
+  recorded in `build.env` (defaults to `golang:1.25-bookworm@sha256:...`). All downloads and validation happen on 
+  the host before files are mounted read-only into the container, ensuring zero network access during rebuild. 
+  This provides independent reproducibility evidence matching SLSA Build Track Level 3+ requirements.
 
 The script automatically:
 - Checks for required tools (curl, jq, cosign, sha256sum, gh for attestations, slsa-verifier for full mode, docker for reproduce mode)

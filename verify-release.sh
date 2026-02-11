@@ -1085,15 +1085,18 @@ verify_vsa_attestation() {
 
 # --- Reproducibility Check function for reproduce mode ---
 run_repro_check() {
-    echo "--- Launching reproducibility check for $REPO @ $TAG in Docker... ---"
+    echo "--- Launching reproducibility check for $REPO @ $TAG in Docker (hermetic mode)... ---"
 
     local builder_image="$REPRO_IMAGE_DEFAULT"
-    local subjects_tmp build_env_tmp
+    local subjects_tmp build_env_tmp artifact_tmp script_tmp repo_tmp
     subjects_tmp=$(mktemp)
     build_env_tmp=$(mktemp)
+    artifact_tmp=$(mktemp)
+    script_tmp=$(mktemp)
+    repo_tmp=$(mktemp -d)
 
     # mktemp creates the files. Here, we remove them so gh can write without --clobber.
-    rm -f "$subjects_tmp" "$build_env_tmp"
+    rm -f "$subjects_tmp" "$build_env_tmp" "$artifact_tmp" "$script_tmp"
 
     # Pull the published subjects + build.env so we can reuse the exact builder image
     # and artifact digest captured during packaging.
@@ -1101,6 +1104,7 @@ run_repro_check() {
     if ! download_release_file "subjects.sha256" "$subjects_tmp"; then
         echo -e "${RED}Failed to download subjects.sha256${NC}" >&2
         echo "[ERROR] subjects.sha256 download failed (see debug output above)" >&2
+        rm -rf "$repo_tmp"
         return 1
     fi
     debug "Downloading build.env for reproduce mode"
@@ -1112,145 +1116,190 @@ run_repro_check() {
     builder_from_env=$(awk -F= '/^SLSA_BUILDER_IMAGE=/ {print $2}' "$build_env_tmp" | tail -n1)
     script_sha_expected=$(awk -F= '/^PACKAGING_SCRIPT_SHA256=/ {print $2}' "$build_env_tmp" | tail -n1)
 
-    rm -f "$subjects_tmp" "$build_env_tmp"
-
     if [[ -z "$artifact_filename" || -z "$expected_digest" ]]; then
         echo -e "${RED}subjects.sha256 missing primary artifact details${NC}" >&2
+        rm -f "$subjects_tmp" "$build_env_tmp" "$artifact_tmp" "$script_tmp"
+        rm -rf "$repo_tmp"
         return 1
     fi
+
+    # Download artifact on host
+    debug "Downloading artifact ${artifact_filename} for reproduce mode"
+    if ! download_release_file "$artifact_filename" "$artifact_tmp"; then
+        echo -e "${RED}Failed to download artifact ${artifact_filename}${NC}" >&2
+        rm -f "$subjects_tmp" "$build_env_tmp" "$artifact_tmp" "$script_tmp"
+        rm -rf "$repo_tmp"
+        return 1
+    fi
+
+    # Validate artifact digest on host before passing to container
+    verify_step "Validating downloaded artifact digest"
+    local download_digest
+    download_digest=$(sha256sum "$artifact_tmp" | awk '{print $1}')
+    if [[ "$download_digest" != "$expected_digest" ]]; then
+        echo -e "${RED}Downloaded artifact digest mismatch${NC}" >&2
+        echo "[ERROR] Expected: $expected_digest" >&2
+        echo "[ERROR] Got:      $download_digest" >&2
+        rm -f "$subjects_tmp" "$build_env_tmp" "$artifact_tmp" "$script_tmp"
+        rm -rf "$repo_tmp"
+        return 1
+    fi
+    verify_ok
+
+    # Download packaging script on host
+    debug "Downloading packaging script for reproduce mode"
+    if ! download_release_file "package-source.sh" "$script_tmp"; then
+        debug "package-source.sh not in release assets, will use from cloned repo"
+        # Mark script_tmp as empty so we know to use repo version
+        rm -f "$script_tmp"
+    fi
+
+    # Validate script integrity on host if we have expected hash
+    if [[ -n "$script_sha_expected" && "$script_sha_expected" != "unknown" && -f "$script_tmp" ]]; then
+        verify_step "Validating packaging script integrity"
+        local script_digest
+        script_digest=$(sha256sum "$script_tmp" | awk '{print $1}')
+        if [[ "$script_digest" != "$script_sha_expected" ]]; then
+            echo -e "${RED}Packaging script digest mismatch${NC}" >&2
+            echo "[ERROR] Expected: $script_sha_expected" >&2
+            echo "[ERROR] Got:      $script_digest" >&2
+            rm -f "$subjects_tmp" "$build_env_tmp" "$artifact_tmp" "$script_tmp"
+            rm -rf "$repo_tmp"
+            return 1
+        fi
+        verify_ok
+    fi
+
+    # Clone repository on host
+    verify_step "Cloning repository ${REPO} @ ${TAG}"
+    if ! git clone --depth 1 --branch "$TAG" "https://github.com/${REPO}.git" "$repo_tmp" >/dev/null 2>&1; then
+        echo -e "${RED}Failed to clone repository${NC}" >&2
+        rm -f "$subjects_tmp" "$build_env_tmp" "$artifact_tmp" "$script_tmp"
+        rm -rf "$repo_tmp"
+        return 1
+    fi
+    verify_ok
+
+    # Get commit SHA from cloned repo
+    local commit_sha
+    commit_sha=$(git -C "$repo_tmp" rev-parse HEAD)
+    debug "Commit SHA: $commit_sha"
+
+    rm -f "$subjects_tmp" "$build_env_tmp"
+
     # Prefer the builder image recorded by the packaging job (falls back to default).
     if [[ -n "$builder_from_env" && "$builder_from_env" != "unknown" ]]; then
         builder_image="$builder_from_env"
     fi
 
-    if ! docker run --rm -i "$builder_image" /bin/bash -se <<'EOS' "$REPO" "$TAG" "$artifact_filename" "$expected_digest" "$script_sha_expected"; then
-#!/usr/bin/env bash
+    debug "Using builder image: $builder_image"
+    debug "Running container with network isolation (--network none)"
+
+    # Prepare volume mount arguments
+    local mount_args=()
+    mount_args+=(-v "$artifact_tmp:/input/artifact.tar.gz:ro")
+    mount_args+=(-v "$repo_tmp:/repo:ro")
+    
+    # Only mount script if we downloaded it successfully
+    local use_release_script="false"
+    if [[ -f "$script_tmp" ]]; then
+        mount_args+=(-v "$script_tmp:/input/package-source.sh:ro")
+        use_release_script="true"
+    fi
+
+    # Run container with network isolation and mounted files
+    if ! docker run --rm --network none "${mount_args[@]}" -w /work \
+        -e "GITHUB_SHA=$commit_sha" \
+        -e "GITHUB_REPOSITORY=$REPO" \
+        -e "GITHUB_REF_NAME=$TAG" \
+        -e "GITHUB_REF_TYPE=tag" \
+        -e "GITHUB_RUN_NUMBER=0" \
+        -e "EXTENDED_METADATA=false" \
+        -e "LC_ALL=C" \
+        -e "LANG=C" \
+        -e "TZ=UTC" \
+        "$builder_image" \
+        /bin/bash -c "
 set -euo pipefail
+umask 022
 
-REPO="$1"
-TAG="$2"
-ARTIFACT_NAME="$3"
-EXPECTED_DIGEST="$4"
-EXPECTED_SCRIPT_SHA="${5:-}"
-
-step() { printf "
---- %s ---
-" "$1"; }
-info() { printf "% -50s" "$1..."; }
-ok() { echo " OK"; }
+step() { printf '\n--- %s ---\n' \"\$1\"; }
+info() { printf '% -50s' \"\$1...\"; }
+ok() { echo ' OK'; }
 fail() {
-    echo " FAIL"
-    if [[ -n "${1:-}" ]]; then echo "  Error: ${1}" >&2; fi
+    echo ' FAIL'
+    if [[ -n \"\${1:-}\" ]]; then echo \"  Error: \${1}\" >&2; fi
     exit 1
 }
 
-step "Fetching published artifact"
-WORK_DIR=$(mktemp -d)
-cd "$WORK_DIR"
+step 'Rebuilding artifact in hermetic container'
 
-SUBJECTS_URL="https://github.com/${REPO}/releases/download/${TAG}/subjects.sha256"
-info "Downloading subjects.sha256"
-curl -sSLo subjects.sha256 "$SUBJECTS_URL" || fail "Unable to fetch subjects.sha256"
-sha_from_subjects=$(awk 'NR==1 {print $1}' subjects.sha256)
-artifact_from_subjects=$(awk 'NR==1 {print $2}' subjects.sha256)
-if [[ "$artifact_from_subjects" != "$ARTIFACT_NAME" ]]; then
-    fail "subjects.sha256 lists '$artifact_from_subjects', expected '$ARTIFACT_NAME'"
-fi
-if [[ "$sha_from_subjects" != "$EXPECTED_DIGEST" ]]; then
-    fail "subjects.sha256 digest mismatch"
-fi
+# Copy repo to writable location (mounted read-only)
+info 'Preparing build environment'
+cp -a /repo /work/repo
+cd /work/repo
+# Fix git ownership issue when copying between containers/users
+git config --global --add safe.directory /work/repo
 ok
 
-info "Downloading ${ARTIFACT_NAME}"
-mkdir -p "$(dirname "$ARTIFACT_NAME")"
-artifact_url="https://github.com/${REPO}/releases/download/${TAG}/${ARTIFACT_NAME}"
-if ! curl -sSL -o "$ARTIFACT_NAME" "${artifact_url}" 2>&1; then
-    http_code=$(curl -sI -o /dev/null -w "%{http_code}" "${artifact_url}" 2>&1)
-    echo "[ERROR] Failed to download artifact from: ${artifact_url}" >&2
-    echo "[ERROR] HTTP response code: ${http_code}" >&2
-    fail "Unable to download artifact"
-fi
-ok
-
-info "Validating downloaded digest"
-download_digest=$(sha256sum "$ARTIFACT_NAME" | awk '{print $1}')
-if [[ "$download_digest" != "$EXPECTED_DIGEST" ]]; then
-    fail "Downloaded tarball digest mismatch"
-fi
-ok
-
-step "Rebuilding artifact"
-temp_repo=$(mktemp -d)
-info "Cloning repository"
-git clone --depth 1 --branch "$TAG" "https://github.com/${REPO}.git" "$temp_repo" >/dev/null 2>&1 || fail "Failed to clone repository for tag $TAG"
-cd "$temp_repo"
-ok
-
-info "Running packaging script"
-export GITHUB_SHA="$(git rev-parse HEAD)"
-export GITHUB_REPOSITORY="$REPO"
-export GITHUB_REF_NAME="$TAG"
-export GITHUB_REF_TYPE="tag"
-export GITHUB_RUN_NUMBER=0
-export EXTENDED_METADATA=false
-export LC_ALL=C LANG=C TZ=UTC
-umask 022
-
-set +e
-PACKAGING_SCRIPT=""
-SCRIPT_URL="https://github.com/${REPO}/releases/download/${TAG}/package-source.sh"
-if curl -sSL -o package-source.sh "$SCRIPT_URL" 2>&1; then
-    chmod +x package-source.sh
-    PACKAGING_SCRIPT="./package-source.sh"
+# Determine which packaging script to use
+PACKAGING_SCRIPT=''
+if [[ '$use_release_script' == 'true' ]]; then
+    info 'Using packaging script from release assets'
+    cp /input/package-source.sh /work/package-source.sh
+    chmod +x /work/package-source.sh
+    PACKAGING_SCRIPT='/work/package-source.sh'
+    ok
 elif [[ -f scripts/package-source.sh ]]; then
-    PACKAGING_SCRIPT="scripts/package-source.sh"
+    info 'Using packaging script from repository'
+    PACKAGING_SCRIPT='scripts/package-source.sh'
+    ok
 else
-    http_code=$(curl -sI -o /dev/null -w "%{http_code}" "${SCRIPT_URL}" 2>&1)
-    echo "[ERROR] Packaging script not found" >&2
-    echo "[ERROR] Tried: ${SCRIPT_URL}" >&2
-    echo "[ERROR] HTTP response code: ${http_code}" >&2
-    echo "[ERROR] Also checked: scripts/package-source.sh (not found)" >&2
-    fail "Packaging script not found (expected release asset package-source.sh)"
-fi
-# Mandatory integrity check to prevent arbitrary code execution
-if [[ -z "$EXPECTED_SCRIPT_SHA" || "$EXPECTED_SCRIPT_SHA" == "unknown" ]]; then
-    fail "Cannot verify packaging script integrity - SHA missing from build.env. This prevents arbitrary code execution."
+    fail 'Packaging script not found in release assets or repository'
 fi
 
-script_digest=$(sha256sum "$PACKAGING_SCRIPT" | awk '{print $1}')
-if [[ "$script_digest" != "$EXPECTED_SCRIPT_SHA" ]]; then
-    fail "Packaging script digest mismatch (expected $EXPECTED_SCRIPT_SHA, got $script_digest)"
-fi
-echo "  ✓ Packaging script integrity verified (SHA: ${script_digest:0:16}...)" >&2
-
-packaging_log=$(mktemp)
-bash "$PACKAGING_SCRIPT" >"$packaging_log" 2>&1
-status=$?
-set -e
-if [[ $status -ne 0 ]]; then
-    fail "Packaging script failed:
-$(cat "$packaging_log")"
-fi
-rm -f "$packaging_log"
-ok
-
-info "Calculating rebuilt digest"
-rebuilt_path=$(find dist -maxdepth 1 -name '*.tar.gz' -print -quit)
-if [[ -z "$rebuilt_path" ]]; then
-    fail "Rebuilt tarball not found"
-fi
-rebuilt_digest=$(sha256sum "$rebuilt_path" | awk '{print $1}')
-if [[ "$rebuilt_digest" != "$EXPECTED_DIGEST" ]]; then
-    fail "Rebuilt digest mismatch (expected $EXPECTED_DIGEST, got $rebuilt_digest)"
+# Run packaging script
+info 'Running packaging script'
+if ! bash \"\$PACKAGING_SCRIPT\" >/work/packaging.log 2>&1; then
+    echo ' FAIL' >&2
+    echo '  Packaging script failed:' >&2
+    cat /work/packaging.log >&2
+    exit 1
 fi
 ok
 
-echo "
-SUCCESS: Artifact is reproducible."
-EOS
+# Compare rebuilt artifact against published
+info 'Calculating rebuilt artifact digest'
+rebuilt_path=\$(find dist -maxdepth 1 -name '*.tar.gz' -print -quit)
+if [[ -z \"\$rebuilt_path\" ]]; then
+    fail 'Rebuilt tarball not found in dist/'
+fi
+rebuilt_digest=\$(sha256sum \"\$rebuilt_path\" | awk '{print \$1}')
+ok
+
+info 'Comparing with published artifact'
+published_digest=\$(sha256sum /input/artifact.tar.gz | awk '{print \$1}')
+if [[ \"\$rebuilt_digest\" != \"\$published_digest\" ]]; then
+    echo ' FAIL' >&2
+    echo \"  Published:  \$published_digest\" >&2
+    echo \"  Rebuilt:    \$rebuilt_digest\" >&2
+    fail 'Digest mismatch - artifact is NOT reproducible'
+fi
+ok
+
+echo '
+SUCCESS: Artifact is reproducible.'
+"; then
         echo -e "${RED}Docker reproducibility check failed${NC}" >&2
+        rm -f "$artifact_tmp" "$script_tmp"
+        rm -rf "$repo_tmp"
         return 1
     fi
+
+    # Cleanup
+    debug "Cleaning up temporary files"
+    rm -f "$artifact_tmp" "$script_tmp"
+    rm -rf "$repo_tmp"
 
     echo "--- Reproducibility check complete. ---"
 

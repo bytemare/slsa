@@ -22,6 +22,13 @@ For releases prior to this changelog, see [GitHub Releases](https://github.com/b
   - Eliminates npm registry from egress policy
   - SBOM generation now runs in dedicated job with docker access
   - Maintains full multi-language SBOM support
+- **Reproduce mode now uses hermetic execution with network isolation**
+  - Container runs with `--network none` flag for zero network access
+  - All downloads and validation happen on host before container execution
+  - Repository and artifacts mounted as read-only volumes
+  - Eliminates curl/wget/ca-certificates requirement in builder images
+  - Matches security model of CI package_source job (egress-policy: block)
+  - Enables use of minimal images like golang:1.25-alpine or Chainguard
 - gh CLI installation now uses dynamic version from tool-versions.json (previously hardcoded v2.40.1)
 - VSA verification retry window increased from 30s to 100s to handle CDN propagation delays
 - PR verification workflow now dynamically discovers latest release

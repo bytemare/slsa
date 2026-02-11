@@ -202,7 +202,9 @@ This quick manual verification only checks the tarball. For complete verificatio
 - `sha256sum`
 - `cosign` (≥2.x)
 - `gh` CLI, `jq`
-- `docker` (only required for `--mode reproduce`)
+- `docker` (only required for `--mode reproduce` - runs hermetically with network isolation)
+- `curl` or `gh` CLI (for downloading release artifacts on host)
+- `git` (for cloning repository on host before hermetic container execution)
 - `build.env` includes `SLSA_BUILDER_IMAGE=<digest>` to reconstruct the exact builder image (the verification script reads this automatically).
 
 #### Steps
@@ -437,7 +439,58 @@ Should show:
 
 **For distribution packagers and teams gathering future Level 4 evidence.**
 
-### Lean Mode Reproduction
+### Hermetic Execution Model
+
+The reproduce mode implements true hermetic execution matching SLSA Build Track requirements:
+
+| Aspect | Implementation | Security Benefit |
+|--------|----------------|------------------|
+| **Network Isolation** | Container runs with `--network none` | Zero network access prevents data exfiltration |
+| **Input Validation** | All artifacts downloaded and validated on host before container execution | Host performs integrity checks with full tooling |
+| **Read-Only Mounts** | Repository and artifacts mounted as `:ro` volumes | Container cannot tamper with inputs |
+| **Minimal Image** | Builder requires only `bash` and `git` | Reduced attack surface, enables Chainguard/Alpine |
+| **No Secrets** | No credentials or tokens passed to container | Eliminates credential exposure risk |
+
+**Workflow:**
+```
+Host (network enabled):
+  1. Download artifacts from GitHub releases
+  2. Validate digests and script integrity  
+  3. Clone repository from GitHub
+  4. Prepare read-only volume mounts
+
+Container (network disabled):
+  5. Copy repository to writable workspace
+  6. Run packaging script using mounted inputs
+  7. Compare rebuilt artifact against published
+```
+
+This matches the security model of the CI `package_source` job, which also uses network restrictions (harden-runner egress-policy) to prevent unauthorized network access during builds.
+
+### Builder Image Requirements
+
+Builder images used for reproducibility must include:
+- **Required:** `bash`, `git`, standard coreutils (tar, gzip, sha256sum, awk, sed, etc.)
+- **Not required:** curl, wget, ca-certificates (network operations happen on host)
+- **Language toolchain:** Go (for Go projects), or other language runtimes as needed
+
+Minimal images like `golang:1.25-alpine` or Chainguard's `cgr.dev/chainguard/go:latest-dev` are supported by installing `bash` and `git` via `apk add --no-cache bash git`.
+
+### Automated Reproduction (Recommended)
+
+Use the `verify-release.sh` script with `--mode reproduce` for automated hermetic reproduction:
+
+```bash
+./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode reproduce
+```
+
+This automatically:
+1. Downloads artifacts and validates integrity on host
+2. Clones repository on host
+3. Runs rebuild in network-isolated container with read-only mounts
+4. Compares rebuilt artifact against published version
+
+### Manual Lean Mode Reproduction
 
 ```bash
 TAG="<tag>"      # Replace with the tag you're reproducing
