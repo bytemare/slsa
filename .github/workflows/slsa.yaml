@@ -261,28 +261,13 @@ jobs:
           echo "  cdxgen: ${cdxgen_version}"
           echo "  builder-image: ${builder_image}"
 
-      - name: Cache builder Docker image
-        uses: actions/cache@b7e8d49f17405cc70c1c120101943203c98d3a4b # v4.2.1
-        with:
-          path: builder-image.tar
-          key: builder-${{ steps.resolve.outputs.builder_image }}
-
-      - name: Load or pull builder image
+      - name: Pull builder image
         env:
           BUILDER_IMAGE: ${{ steps.resolve.outputs.builder_image }}
-          TMPDIR: ${{ github.workspace }}
         run: |
           set -euo pipefail
-          
-          if [[ -f builder-image.tar ]]; then
-            echo "[INFO] Loading cached builder image" >&2
-            docker load -i builder-image.tar
-          else
-            echo "[INFO] Pulling builder image: ${BUILDER_IMAGE}" >&2
-            docker pull "${BUILDER_IMAGE}"
-            echo "[INFO] Saving image to cache" >&2
-            docker save "${BUILDER_IMAGE}" -o builder-image.tar
-          fi
+          echo "[INFO] Pulling builder image: ${BUILDER_IMAGE}" >&2
+          docker pull "${BUILDER_IMAGE}"
 
   # ===============================================================
   # Hermetic source packaging (offline, containerized)
@@ -424,32 +409,16 @@ jobs:
           echo "lang=${lang}" >> "$GITHUB_OUTPUT"
           echo "[INFO] Detected SBOM language: ${lang}" >&2
 
-      - name: Cache cdxgen Docker image
-        if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
-        uses: actions/cache@b7e8d49f17405cc70c1c120101943203c98d3a4b # v4.2.1
-        with:
-          path: cdxgen-image.tar
-          key: cdxgen-${{ needs.load_versions.outputs.cdxgen_version }}
-
-      - name: Load or pull cdxgen image
+      - name: Pull cdxgen image
         if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
         env:
           CDXGEN_VERSION: ${{ needs.load_versions.outputs.cdxgen_version }}
-          TMPDIR: ${{ github.workspace }}
         run: |
           set -euo pipefail
           version="${CDXGEN_VERSION:-v12.0.0}"
           image="ghcr.io/cyclonedx/cdxgen:${version}"
-          
-          if [[ -f cdxgen-image.tar ]]; then
-            echo "[INFO] Loading cached cdxgen image" >&2
-            docker load -i cdxgen-image.tar
-          else
-            echo "[INFO] Pulling cdxgen image: ${image}" >&2
-            docker pull "${image}"
-            echo "[INFO] Saving image to cache" >&2
-            docker save "${image}" -o cdxgen-image.tar
-          fi
+          echo "[INFO] Pulling cdxgen image: ${image}" >&2
+          docker pull "${image}"
 
       - name: Extract source for SBOM generation
         run: |
