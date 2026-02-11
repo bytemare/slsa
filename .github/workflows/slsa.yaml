@@ -381,6 +381,7 @@ jobs:
           egress-policy: block
           # Docker container pull for cdxgen (cached via actions/cache)
           allowed-endpoints: >
+            api.github.com:443
             artifactcache.actions.githubusercontent.com:443
             ghcr.io:443
             pkg-containers.githubusercontent.com:443
