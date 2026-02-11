@@ -129,6 +129,47 @@ else
 fi
 
 # ===========================================================================
+# Debug Logging
+# ===========================================================================
+# Default to DEBUG=true in CI for complete logs
+if [[ "${GITHUB_ACTIONS:-false}" == "true" && -z "${DEBUG:-}" ]]; then
+    DEBUG=true
+fi
+
+# Track current GitHub Actions group
+_GHA_GROUP_OPEN=false
+
+debug() {
+    if [[ "${DEBUG:-false}" == "true" ]]; then
+        # In GitHub Actions, use collapsible groups for section headers
+        if [[ "${GITHUB_ACTIONS:-false}" == "true" ]]; then
+            # Detect section headers (lines starting with ====== or major milestones)
+            if [[ "$*" =~ ^=+ ]] || [[ "$*" =~ ^(Starting|Entering|Download|Verification|Complete) ]]; then
+                # Close previous group if open
+                if [[ "$_GHA_GROUP_OPEN" == "true" ]]; then
+                    echo "::endgroup::" >&2
+                fi
+                # Start new group
+                echo "::group::🔍 DEBUG: $*" >&2
+                _GHA_GROUP_OPEN=true
+            else
+                echo "[DEBUG] $*" >&2
+            fi
+        else
+            echo "[DEBUG] $*" >&2
+        fi
+    fi
+}
+
+# Close debug group at exit in GitHub Actions
+# shellcheck disable=SC2329  # Function invoked via trap in cleanup()
+cleanup_debug_groups() {
+    if [[ "${GITHUB_ACTIONS:-false}" == "true" && "$_GHA_GROUP_OPEN" == "true" ]]; then
+        echo "::endgroup::" >&2
+    fi
+}
+
+# ===========================================================================
 # Exit Codes
 # ===========================================================================
 readonly EXIT_SUCCESS=0
@@ -142,6 +183,7 @@ readonly EXIT_DOWNLOAD_FAILED=4
 # ===========================================================================
 # shellcheck disable=SC2329  # Function invoked via trap
 cleanup() {
+  cleanup_debug_groups
   if [[ -n "${WORK_DIR:-}" ]] && [[ -d "$WORK_DIR" ]]; then
     rm -rf "$WORK_DIR"
   fi
@@ -247,6 +289,7 @@ ${YELLOW}Optional Arguments:${NC}
 Examples:
   $0 --repo bytemare/workflows --tag 0.0.4
   $0 --repo bytemare/workflows --tag 0.0.4 --mode full
+  DEBUG=true $0 --repo bytemare/workflows --tag 0.0.4  # Enable debug logging (auto in CI)
   $0 --repo bytemare/workflows --tag 0.0.4 --mode reproduce
   $0 --repo bytemare/workflows --tag 0.0.4 --mode vsa
   $0 --repo bytemare/workflows --tag 0.0.4 --mode full --emit-vsa my.vsa.json --verifier-id https://example.com/verifier
@@ -448,7 +491,7 @@ download_release_file() {
     local output="$2"
 
     if ! tokenless_actions; then
-        echo "[DEBUG] Attempting gh release download: TAG=${TAG} REPO=${REPO} PATTERN=${name}" >&2
+        debug "Attempting gh release download: TAG=${TAG} REPO=${REPO} PATTERN=${name}"
         if gh release download "$TAG" --repo "$REPO" -p "$name" --output "$output" 2>&1 | tee /tmp/gh-download-error.log >&2; then
             return 0
         else
@@ -458,7 +501,7 @@ download_release_file() {
 
     local base_url="${GITHUB_SERVER_URL:-https://github.com}"
     local url="${base_url}/${REPO}/releases/download/${TAG}/${name}"
-    echo "[DEBUG] Attempting curl download: ${url}" >&2
+    debug "Attempting curl download: ${url}"
     if curl -fsSL -o "$output" "$url" 2>&1; then
         return 0
     else
@@ -473,43 +516,64 @@ download_release_file() {
 
 download_release_pattern() {
     local pattern="$1"
+    local required="${2:-false}"
+    local downloaded=false
 
     if ! tokenless_actions; then
-        echo "[DEBUG] Attempting gh release download: TAG=${TAG} REPO=${REPO} PATTERN=${pattern}" >&2
-        gh release download "$TAG" --repo "$REPO" -p "$pattern" 2>&1 | tee /tmp/gh-pattern-error.log >&2 || true
-        return 0
-    fi
-
-    local api_url="${GITHUB_API_URL:-https://api.github.com}/repos/${REPO}/releases/tags/${TAG}"
-    echo "[DEBUG] Fetching release assets from GitHub API: ${api_url}" >&2
-    local assets
-    if ! assets=$(curl -fsSL -H "Accept: application/vnd.github+json" "$api_url" 2>&1); then
-        echo "[ERROR] Failed to fetch release metadata from GitHub API" >&2
-        echo "[ERROR] API URL: ${api_url}" >&2
-        local http_code
-        http_code=$(curl -sI -o /dev/null -w "%{http_code}" -H "Accept: application/vnd.github+json" "$api_url" 2>&1)
-        echo "[ERROR] HTTP response code: ${http_code}" >&2
-        return 0
-    fi
-
-    local assets_list
-    if ! assets_list=$(jq -r '.assets? // [] | .[] | "\(.name)\t\(.browser_download_url)"' <<< "$assets"); then
-        return 0
-    fi
-
-    while IFS=$'\t' read -r name url; do
-        if [[ "$name" == "$pattern" ]]; then
-            echo "[DEBUG] Downloading asset: ${name} from ${url}" >&2
-            if ! curl -fsSL -L -o "$name" "$url" 2>&1; then
-                local http_code
-                http_code=$(curl -sI -o /dev/null -w "%{http_code}" -L "$url" 2>&1)
-                echo "[ERROR] Failed to download ${name} from ${url}" >&2
-                echo "[ERROR] HTTP response code: ${http_code}" >&2
-                continue
-            fi
+        debug "Attempting gh release download: TAG=${TAG} REPO=${REPO} PATTERN=${pattern}"
+        if gh release download "$TAG" --repo "$REPO" -p "$pattern" 2>&1 | tee /tmp/gh-pattern-error.log >&2; then
+            downloaded=true
         fi
-    done <<< "$assets_list"
+    else
+        local api_url="${GITHUB_API_URL:-https://api.github.com}/repos/${REPO}/releases/tags/${TAG}"
+        debug "Fetching release assets from GitHub API: ${api_url}"
+        local assets
+        if ! assets=$(curl -fsSL -H "Accept: application/vnd.github+json" "$api_url" 2>&1); then
+            echo "[ERROR] Failed to fetch release metadata from GitHub API" >&2
+            echo "[ERROR] API URL: ${api_url}" >&2
+            local http_code
+            http_code=$(curl -sI -o /dev/null -w "%{http_code}" -H "Accept: application/vnd.github+json" "$api_url" 2>&1)
+            echo "[ERROR] HTTP response code: ${http_code}" >&2
+            if [[ "$required" == "true" ]]; then
+                return 1
+            fi
+            return 0
+        fi
 
+        local assets_list
+        if ! assets_list=$(jq -r '.assets? // [] | .[] | "\(.name)\t\(.browser_download_url)"' <<< "$assets"); then
+            if [[ "$required" == "true" ]]; then
+                return 1
+            fi
+            return 0
+        fi
+
+        while IFS=$'\t' read -r name url; do
+            if [[ "$name" == "$pattern" ]]; then
+                debug "Downloading asset: ${name} from ${url}"
+                if curl -fsSL -L -o "$name" "$url" 2>&1; then
+                    downloaded=true
+                else
+                    local http_code
+                    http_code=$(curl -sI -o /dev/null -w "%{http_code}" -L "$url" 2>&1)
+                    echo "[ERROR] Failed to download ${name} from ${url}" >&2
+                    echo "[ERROR] HTTP response code: ${http_code}" >&2
+                    continue
+                fi
+            fi
+        done <<< "$assets_list"
+    fi
+
+    # Handle download result
+    if [[ "$downloaded" == "false" ]]; then
+        if [[ "$required" == "true" ]]; then
+            echo "[ERROR] Required asset matching '${pattern}' not found in release" >&2
+            return 1
+        else
+            echo "[WARN] Optional asset matching '${pattern}' not found" >&2
+        fi
+    fi
+    
     return 0
 }
 
@@ -544,10 +608,10 @@ run_slsa_verifier() {
 download_artifacts() {
     local patterns=()
 
-    echo "[DEBUG] ====== Starting artifact download ======" >&2
-    echo "[DEBUG]   MODE=${MODE}" >&2
-    echo "[DEBUG]   REPO=${REPO}" >&2
-    echo "[DEBUG]   TAG=${TAG}" >&2
+    debug "====== Starting artifact download ======"
+    debug "  MODE=${MODE}"
+    debug "  REPO=${REPO}"
+    debug "  TAG=${TAG}"
     echo "" >&2
 
     if [[ "$MODE" == "vsa" ]]; then
@@ -575,18 +639,35 @@ download_artifacts() {
         fi
     fi
 
-    echo "[DEBUG] Artifact patterns to download: ${patterns[*]}" >&2
+    debug "Artifact patterns to download: ${patterns[*]}"
     
     verify_step "Downloading release artifacts"
 
-    for pattern in "${patterns[@]}"; do
-        echo "[DEBUG] Downloading pattern: ${pattern}" >&2
-        download_release_pattern "$pattern"
-    done
+    # Download required files for all modes
+    if [[ "$MODE" == "vsa" ]]; then
+        download_release_pattern "verification-summary.attestation.json" true
+        download_release_pattern "verification-summary.attestation.json.bundle" true
+        download_release_pattern "subjects.sha256" true
+    else
+        download_release_pattern "*.tar.gz" true
+        download_release_pattern "*.bundle" true
+        download_release_pattern "subjects.sha256" true
+        download_release_pattern "checksums.txt" true
+        
+        # Download optional files for full mode
+        if [[ "$MODE" == "full" ]]; then
+            download_release_pattern "*.intoto.jsonl" false
+            download_release_pattern "sbom.cdx.json" false
+            download_release_pattern "verification.json" false
+            download_release_pattern "manifest.files.sha256" false
+            download_release_pattern "verification-summary.attestation.json" false
+            download_release_pattern "verification-summary.attestation.json.bundle" false
+        fi
+    fi
 
     echo "" >&2
-    echo "[DEBUG] ====== Download phase complete ======" >&2
-    echo "[DEBUG] Files in work directory:" >&2
+    debug "====== Download phase complete ======"
+    debug "Files in work directory:"
     ls -lah . >&2
     echo "" >&2
 
@@ -715,6 +796,19 @@ verify_attestations() {
     else
         verify_fail "Attestation verification failed"
         echo "$output" >&2
+        
+        # Add helpful troubleshooting
+        echo "" >&2
+        echo "${YELLOW}Troubleshooting attestation verification:${NC}" >&2
+        echo "1. Verify the release has .intoto.jsonl files" >&2
+        echo "2. If verifying a fork's release, specify: --signer-repo <fork-owner>/slsa" >&2
+        echo "3. Check that the release was created by GitHub Actions with SLSA provenance" >&2
+        echo "" >&2
+        echo "Details:" >&2
+        echo "  Expected attestations signed by: ${SIGNER_REPO:-${SIGNER_REPO_DEFAULT}}" >&2
+        echo "  Verifying release: ${REPO}@${TAG}" >&2
+        echo "" >&2
+        
         if [[ -n "$SIGNER_REPO" && "$SIGNER_REPO" == "$SIGNER_REPO_DEFAULT" ]]; then
             verify_fail "This run assumed the signer repo is '${SIGNER_REPO_DEFAULT}'. If the attestation was signed by another workflow repo (for example a fork or a repo that reused that workflow), re-run with --signer-repo <owner>/<repo> and optionally --signer-workflow <owner>/<repo>/.github/workflows/slsa.yaml@<ref>." >&2
         elif [[ -n "$SIGNER_REPO" ]]; then
@@ -991,26 +1085,30 @@ verify_vsa_attestation() {
 
 # --- Reproducibility Check function for reproduce mode ---
 run_repro_check() {
-    echo "--- Launching reproducibility check for $REPO @ $TAG in Docker... ---"
+    echo "--- Launching reproducibility check for $REPO @ $TAG in Docker (hermetic mode)... ---"
 
     local builder_image="$REPRO_IMAGE_DEFAULT"
-    local subjects_tmp build_env_tmp
+    local subjects_tmp build_env_tmp artifact_tmp script_tmp repo_tmp
     subjects_tmp=$(mktemp)
     build_env_tmp=$(mktemp)
+    artifact_tmp=$(mktemp)
+    script_tmp=$(mktemp)
+    repo_tmp=$(mktemp -d)
 
     # mktemp creates the files. Here, we remove them so gh can write without --clobber.
-    rm -f "$subjects_tmp" "$build_env_tmp"
+    rm -f "$subjects_tmp" "$build_env_tmp" "$artifact_tmp" "$script_tmp"
 
     # Pull the published subjects + build.env so we can reuse the exact builder image
     # and artifact digest captured during packaging.
-    echo "[DEBUG] Downloading subjects.sha256 for reproduce mode" >&2
+    debug "Downloading subjects.sha256 for reproduce mode"
     if ! download_release_file "subjects.sha256" "$subjects_tmp"; then
         echo -e "${RED}Failed to download subjects.sha256${NC}" >&2
         echo "[ERROR] subjects.sha256 download failed (see debug output above)" >&2
+        rm -rf "$repo_tmp"
         return 1
     fi
-    echo "[DEBUG] Downloading build.env for reproduce mode" >&2
-    download_release_file "build.env" "$build_env_tmp" || echo "[DEBUG] build.env not found (optional)" >&2
+    debug "Downloading build.env for reproduce mode"
+    download_release_file "build.env" "$build_env_tmp" || debug "build.env not found (optional)"
 
     local artifact_filename expected_digest builder_from_env script_sha_expected
     artifact_filename=$(awk 'NR==1 {print $2}' "$subjects_tmp")
@@ -1018,148 +1116,190 @@ run_repro_check() {
     builder_from_env=$(awk -F= '/^SLSA_BUILDER_IMAGE=/ {print $2}' "$build_env_tmp" | tail -n1)
     script_sha_expected=$(awk -F= '/^PACKAGING_SCRIPT_SHA256=/ {print $2}' "$build_env_tmp" | tail -n1)
 
-    rm -f "$subjects_tmp" "$build_env_tmp"
-
     if [[ -z "$artifact_filename" || -z "$expected_digest" ]]; then
         echo -e "${RED}subjects.sha256 missing primary artifact details${NC}" >&2
+        rm -f "$subjects_tmp" "$build_env_tmp" "$artifact_tmp" "$script_tmp"
+        rm -rf "$repo_tmp"
         return 1
     fi
+
+    # Download artifact on host
+    debug "Downloading artifact ${artifact_filename} for reproduce mode"
+    if ! download_release_file "$artifact_filename" "$artifact_tmp"; then
+        echo -e "${RED}Failed to download artifact ${artifact_filename}${NC}" >&2
+        rm -f "$subjects_tmp" "$build_env_tmp" "$artifact_tmp" "$script_tmp"
+        rm -rf "$repo_tmp"
+        return 1
+    fi
+
+    # Validate artifact digest on host before passing to container
+    verify_step "Validating downloaded artifact digest"
+    local download_digest
+    download_digest=$(sha256sum "$artifact_tmp" | awk '{print $1}')
+    if [[ "$download_digest" != "$expected_digest" ]]; then
+        echo -e "${RED}Downloaded artifact digest mismatch${NC}" >&2
+        echo "[ERROR] Expected: $expected_digest" >&2
+        echo "[ERROR] Got:      $download_digest" >&2
+        rm -f "$subjects_tmp" "$build_env_tmp" "$artifact_tmp" "$script_tmp"
+        rm -rf "$repo_tmp"
+        return 1
+    fi
+    verify_ok
+
+    # Download packaging script on host
+    debug "Downloading packaging script for reproduce mode"
+    if ! download_release_file "package-source.sh" "$script_tmp"; then
+        debug "package-source.sh not in release assets, will use from cloned repo"
+        # Mark script_tmp as empty so we know to use repo version
+        rm -f "$script_tmp"
+    fi
+
+    # Validate script integrity on host if we have expected hash
+    if [[ -n "$script_sha_expected" && "$script_sha_expected" != "unknown" && -f "$script_tmp" ]]; then
+        verify_step "Validating packaging script integrity"
+        local script_digest
+        script_digest=$(sha256sum "$script_tmp" | awk '{print $1}')
+        if [[ "$script_digest" != "$script_sha_expected" ]]; then
+            echo -e "${RED}Packaging script digest mismatch${NC}" >&2
+            echo "[ERROR] Expected: $script_sha_expected" >&2
+            echo "[ERROR] Got:      $script_digest" >&2
+            rm -f "$subjects_tmp" "$build_env_tmp" "$artifact_tmp" "$script_tmp"
+            rm -rf "$repo_tmp"
+            return 1
+        fi
+        verify_ok
+    fi
+
+    # Clone repository on host
+    verify_step "Cloning repository ${REPO} @ ${TAG}"
+    if ! git clone --depth 1 --branch "$TAG" "https://github.com/${REPO}.git" "$repo_tmp" >/dev/null 2>&1; then
+        echo -e "${RED}Failed to clone repository${NC}" >&2
+        rm -f "$subjects_tmp" "$build_env_tmp" "$artifact_tmp" "$script_tmp"
+        rm -rf "$repo_tmp"
+        return 1
+    fi
+    verify_ok
+
+    # Get commit SHA from cloned repo
+    local commit_sha
+    commit_sha=$(git -C "$repo_tmp" rev-parse HEAD)
+    debug "Commit SHA: $commit_sha"
+
+    rm -f "$subjects_tmp" "$build_env_tmp"
+
     # Prefer the builder image recorded by the packaging job (falls back to default).
     if [[ -n "$builder_from_env" && "$builder_from_env" != "unknown" ]]; then
         builder_image="$builder_from_env"
     fi
 
-    if ! docker run --rm -i "$builder_image" /bin/bash -se <<'EOS' "$REPO" "$TAG" "$artifact_filename" "$expected_digest" "$script_sha_expected"; then
-#!/usr/bin/env bash
+    debug "Using builder image: $builder_image"
+    debug "Running container with network isolation (--network none)"
+
+    # Prepare volume mount arguments
+    local mount_args=()
+    mount_args+=(-v "$artifact_tmp:/input/artifact.tar.gz:ro")
+    mount_args+=(-v "$repo_tmp:/repo:ro")
+    
+    # Only mount script if we downloaded it successfully
+    local use_release_script="false"
+    if [[ -f "$script_tmp" ]]; then
+        mount_args+=(-v "$script_tmp:/input/package-source.sh:ro")
+        use_release_script="true"
+    fi
+
+    # Run container with network isolation and mounted files
+    if ! docker run --rm --network none "${mount_args[@]}" -w /work \
+        -e "GITHUB_SHA=$commit_sha" \
+        -e "GITHUB_REPOSITORY=$REPO" \
+        -e "GITHUB_REF_NAME=$TAG" \
+        -e "GITHUB_REF_TYPE=tag" \
+        -e "GITHUB_RUN_NUMBER=0" \
+        -e "EXTENDED_METADATA=false" \
+        -e "LC_ALL=C" \
+        -e "LANG=C" \
+        -e "TZ=UTC" \
+        "$builder_image" \
+        /bin/bash -c "
 set -euo pipefail
+umask 022
 
-REPO="$1"
-TAG="$2"
-ARTIFACT_NAME="$3"
-EXPECTED_DIGEST="$4"
-EXPECTED_SCRIPT_SHA="${5:-}"
-
-step() { printf "
---- %s ---
-" "$1"; }
-info() { printf "% -50s" "$1..."; }
-ok() { echo " OK"; }
+step() { printf '\n--- %s ---\n' \"\$1\"; }
+info() { printf '% -50s' \"\$1...\"; }
+ok() { echo ' OK'; }
 fail() {
-    echo " FAIL"
-    if [[ -n "${1:-}" ]]; then echo "  Error: ${1}" >&2; fi
+    echo ' FAIL'
+    if [[ -n \"\${1:-}\" ]]; then echo \"  Error: \${1}\" >&2; fi
     exit 1
 }
 
-step "Fetching published artifact"
-WORK_DIR=$(mktemp -d)
-cd "$WORK_DIR"
+step 'Rebuilding artifact in hermetic container'
 
-SUBJECTS_URL="https://github.com/${REPO}/releases/download/${TAG}/subjects.sha256"
-info "Downloading subjects.sha256"
-curl -sSLo subjects.sha256 "$SUBJECTS_URL" || fail "Unable to fetch subjects.sha256"
-sha_from_subjects=$(awk 'NR==1 {print $1}' subjects.sha256)
-artifact_from_subjects=$(awk 'NR==1 {print $2}' subjects.sha256)
-if [[ "$artifact_from_subjects" != "$ARTIFACT_NAME" ]]; then
-    fail "subjects.sha256 lists '$artifact_from_subjects', expected '$ARTIFACT_NAME'"
-fi
-if [[ "$sha_from_subjects" != "$EXPECTED_DIGEST" ]]; then
-    fail "subjects.sha256 digest mismatch"
-fi
+# Copy repo to writable location (mounted read-only)
+info 'Preparing build environment'
+cp -a /repo /work/repo
+cd /work/repo
+# Fix git ownership issue when copying between containers/users
+git config --global --add safe.directory /work/repo
 ok
 
-info "Downloading ${ARTIFACT_NAME}"
-mkdir -p "$(dirname "$ARTIFACT_NAME")"
-artifact_url="https://github.com/${REPO}/releases/download/${TAG}/${ARTIFACT_NAME}"
-echo "[DEBUG] Downloading artifact from: ${artifact_url}" >&2
-if ! curl -sSL -o "$ARTIFACT_NAME" "${artifact_url}" 2>&1; then
-    http_code=$(curl -sI -o /dev/null -w "%{http_code}" "${artifact_url}" 2>&1)
-    echo "[ERROR] Failed to download artifact from: ${artifact_url}" >&2
-    echo "[ERROR] HTTP response code: ${http_code}" >&2
-    fail "Unable to download artifact"
-fi
-ok
-
-info "Validating downloaded digest"
-download_digest=$(sha256sum "$ARTIFACT_NAME" | awk '{print $1}')
-if [[ "$download_digest" != "$EXPECTED_DIGEST" ]]; then
-    fail "Downloaded tarball digest mismatch"
-fi
-ok
-
-step "Rebuilding artifact"
-temp_repo=$(mktemp -d)
-info "Cloning repository"
-git clone --depth 1 --branch "$TAG" "https://github.com/${REPO}.git" "$temp_repo" >/dev/null 2>&1 || fail "Failed to clone repository for tag $TAG"
-cd "$temp_repo"
-ok
-
-info "Running packaging script"
-export GITHUB_SHA="$(git rev-parse HEAD)"
-export GITHUB_REPOSITORY="$REPO"
-export GITHUB_REF_NAME="$TAG"
-export GITHUB_REF_TYPE="tag"
-export GITHUB_RUN_NUMBER=0
-export EXTENDED_METADATA=false
-export LC_ALL=C LANG=C TZ=UTC
-umask 022
-
-set +e
-PACKAGING_SCRIPT=""
-SCRIPT_URL="https://github.com/${REPO}/releases/download/${TAG}/package-source.sh"
-echo "[DEBUG] Attempting to download packaging script from: ${SCRIPT_URL}" >&2
-if curl -sSL -o package-source.sh "$SCRIPT_URL" 2>&1; then
-    chmod +x package-source.sh
-    PACKAGING_SCRIPT="./package-source.sh"
+# Determine which packaging script to use
+PACKAGING_SCRIPT=''
+if [[ '$use_release_script' == 'true' ]]; then
+    info 'Using packaging script from release assets'
+    cp /input/package-source.sh /work/package-source.sh
+    chmod +x /work/package-source.sh
+    PACKAGING_SCRIPT='/work/package-source.sh'
+    ok
 elif [[ -f scripts/package-source.sh ]]; then
-    echo "[DEBUG] Using local packaging script: scripts/package-source.sh" >&2
-    PACKAGING_SCRIPT="scripts/package-source.sh"
+    info 'Using packaging script from repository'
+    PACKAGING_SCRIPT='scripts/package-source.sh'
+    ok
 else
-    http_code=$(curl -sI -o /dev/null -w "%{http_code}" "${SCRIPT_URL}" 2>&1)
-    echo "[ERROR] Packaging script not found" >&2
-    echo "[ERROR] Tried: ${SCRIPT_URL}" >&2
-    echo "[ERROR] HTTP response code: ${http_code}" >&2
-    echo "[ERROR] Also checked: scripts/package-source.sh (not found)" >&2
-    fail "Packaging script not found (expected release asset package-source.sh)"
-fi
-# Mandatory integrity check to prevent arbitrary code execution
-if [[ -z "$EXPECTED_SCRIPT_SHA" || "$EXPECTED_SCRIPT_SHA" == "unknown" ]]; then
-    fail "Cannot verify packaging script integrity - SHA missing from build.env. This prevents arbitrary code execution."
+    fail 'Packaging script not found in release assets or repository'
 fi
 
-script_digest=$(sha256sum "$PACKAGING_SCRIPT" | awk '{print $1}')
-if [[ "$script_digest" != "$EXPECTED_SCRIPT_SHA" ]]; then
-    fail "Packaging script digest mismatch (expected $EXPECTED_SCRIPT_SHA, got $script_digest)"
-fi
-echo "  ✓ Packaging script integrity verified (SHA: ${script_digest:0:16}...)" >&2
-
-packaging_log=$(mktemp)
-bash "$PACKAGING_SCRIPT" >"$packaging_log" 2>&1
-status=$?
-set -e
-if [[ $status -ne 0 ]]; then
-    fail "Packaging script failed:
-$(cat "$packaging_log")"
-fi
-rm -f "$packaging_log"
-ok
-
-info "Calculating rebuilt digest"
-rebuilt_path=$(find dist -maxdepth 1 -name '*.tar.gz' -print -quit)
-if [[ -z "$rebuilt_path" ]]; then
-    fail "Rebuilt tarball not found"
-fi
-rebuilt_digest=$(sha256sum "$rebuilt_path" | awk '{print $1}')
-if [[ "$rebuilt_digest" != "$EXPECTED_DIGEST" ]]; then
-    fail "Rebuilt digest mismatch (expected $EXPECTED_DIGEST, got $rebuilt_digest)"
+# Run packaging script
+info 'Running packaging script'
+if ! bash \"\$PACKAGING_SCRIPT\" >/work/packaging.log 2>&1; then
+    echo ' FAIL' >&2
+    echo '  Packaging script failed:' >&2
+    cat /work/packaging.log >&2
+    exit 1
 fi
 ok
 
-echo "
-SUCCESS: Artifact is reproducible."
-EOS
+# Compare rebuilt artifact against published
+info 'Calculating rebuilt artifact digest'
+rebuilt_path=\$(find dist -maxdepth 1 -name '*.tar.gz' -print -quit)
+if [[ -z \"\$rebuilt_path\" ]]; then
+    fail 'Rebuilt tarball not found in dist/'
+fi
+rebuilt_digest=\$(sha256sum \"\$rebuilt_path\" | awk '{print \$1}')
+ok
+
+info 'Comparing with published artifact'
+published_digest=\$(sha256sum /input/artifact.tar.gz | awk '{print \$1}')
+if [[ \"\$rebuilt_digest\" != \"\$published_digest\" ]]; then
+    echo ' FAIL' >&2
+    echo \"  Published:  \$published_digest\" >&2
+    echo \"  Rebuilt:    \$rebuilt_digest\" >&2
+    fail 'Digest mismatch - artifact is NOT reproducible'
+fi
+ok
+
+echo '
+SUCCESS: Artifact is reproducible.'
+"; then
         echo -e "${RED}Docker reproducibility check failed${NC}" >&2
+        rm -f "$artifact_tmp" "$script_tmp"
+        rm -rf "$repo_tmp"
         return 1
     fi
+
+    # Cleanup
+    debug "Cleaning up temporary files"
+    rm -f "$artifact_tmp" "$script_tmp"
+    rm -rf "$repo_tmp"
 
     echo "--- Reproducibility check complete. ---"
 
@@ -1168,31 +1308,31 @@ EOS
 
 # Main function
 main() {
-    echo "[DEBUG] ====== verify-release.sh starting ======" >&2
-    echo "[DEBUG] Script version: ${SCRIPT_VERSION}" >&2
-    echo "[DEBUG] Arguments: $*" >&2
+    debug "====== verify-release.sh starting ======"
+    debug "Script version: ${SCRIPT_VERSION}"
+    debug "Arguments: $*"
     echo "" >&2
     
     parse_args "$@"
     check_tools
 
     if [[ "$MODE" == "reproduce" ]]; then
-        echo "[DEBUG] ====== Entering reproduce mode ======" >&2
-        echo "[DEBUG]   REPO=${REPO}" >&2
-        echo "[DEBUG]   TAG=${TAG}" >&2
+        debug "====== Entering reproduce mode ======"
+        debug "  REPO=${REPO}"
+        debug "  TAG=${TAG}"
         echo "" >&2
         run_repro_check
         exit $?
     fi
 
     echo -e "\n${YELLOW}Verifying release: ${REPO} @ ${TAG} (${MODE} mode)${NC}\n"
-    echo "[DEBUG] Script execution context:" >&2
-    echo "[DEBUG]   REPO=${REPO}" >&2
-    echo "[DEBUG]   TAG=${TAG}" >&2
-    echo "[DEBUG]   MODE=${MODE}" >&2
-    echo "[DEBUG]   WORK_DIR will be: $(mktemp -u)" >&2
-    echo "[DEBUG]   GITHUB_ACTIONS=${GITHUB_ACTIONS:-false}" >&2
-    echo "[DEBUG]   GH_TOKEN set: ${GH_TOKEN:+yes}" >&2
+    debug "Script execution context:"
+    debug "  REPO=${REPO}"
+    debug "  TAG=${TAG}"
+    debug "  MODE=${MODE}"
+    debug "  WORK_DIR will be: $(mktemp -u)"
+    debug "  GITHUB_ACTIONS=${GITHUB_ACTIONS:-false}"
+    debug "  GH_TOKEN set: ${GH_TOKEN:+yes}"
     echo "" >&2
 
     WORK_DIR=$(mktemp -d)

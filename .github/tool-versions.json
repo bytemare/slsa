@@ -1,28 +1,33 @@
 {
-  "$comment": "Tool versions and SHA256 hashes for supply chain security. Updated by wf-update-tool-hashes workflow.",
+  "$comment": "Central tool version registry for supply chain security. Auto-updated by wf-update-tool-hashes.yaml",
   "tools": {
     "cosign": {
+      "$comment": "Sigstore keyless signing tool for SLSA attestations",
       "version": "v3.0.4",
       "sha256": "10dab2fd2170b5aa0d5c0673a9a2793304960220b314f6a873bf39c2f08287aa"
     },
     "gh": {
+      "$comment": "GitHub CLI for release management and API operations",
       "version": "v2.86.0",
       "sha256": "f3b08bd6a28420cc2229b0a1a687fa25f2b838d3f04b297414c1041ca68103c7"
     },
     "jq": {
+      "$comment": "Command-line JSON processor",
       "version": "jq-1.8.1",
       "sha256": "020468de7539ce70ef1bceaf7cde2e8c4f2ca6c3afb84642aabc5c97d9fc2a0d"
     },
     "slsa-verifier": {
+      "$comment": "SLSA provenance verifier from slsa-framework",
       "version": "v2.7.1"
     },
     "cdxgen": {
-      "version": "v12.0.0"
-    },
-    "node": {
-      "version": "24.13.0"
+      "$comment": "CycloneDX SBOM generator (multi-language support). Using container to avoid npm registry access.",
+      "image": "ghcr.io/cyclonedx/cdxgen",
+      "tag": "v12.0.0",
+      "digest": "sha256:8b2c6973fa0cb1f1277838b383dfe2b83cdd246be88ac98dbc1be63cce8502ce"
     },
     "builder-image": {
+      "$comment": "Container image for reproducible builds. Digest MUST match verify-release.sh REPRO_IMAGE_DEFAULT",
       "image": "golang",
       "tag": "1.25-bookworm",
       "digest": "sha256:51b6b12427dc03451c24f7fc996c43a20e8a8e56f0849dd0db6ff6e9225cc892"

@@ -345,7 +345,7 @@ if [ -f /etc/os-release ]; then source /etc/os-release; fi
   printf 'UNAME=%s\n' "$(uname -a)"
   printf 'RUNNER_OS_ID=%s\n' "${ID:-unknown}"
   printf 'RUNNER_OS_VERSION=%s\n' "${VERSION_ID:-unknown}"
-  printf 'BUILD_PACKAGES=%s\n' "git,ca-certificates,gzip,wget,coreutils,perl-base"
+  printf 'BUILD_PACKAGES=%s\n' "bash,git,gzip,coreutils"
   printf 'SOURCE_DATE_EPOCH=%s\n' "${SOURCE_DATE_EPOCH}"
   printf 'PACKAGING_SCRIPT_SHA256=%s\n' "$SCRIPT_DIGEST"
   printf 'PACKAGING_LANGUAGE=%s\n' "$PACKAGING_LANGUAGE"

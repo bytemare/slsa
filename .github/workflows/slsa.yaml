@@ -59,12 +59,7 @@ on:
         default: auto
       cdxgen_version:
         description: >-
-          cdxgen version override (default: from tool-versions.json)
-        type: string
-        required: false
-      node_version:
-        description: >-
-          Node.js version override (default: from tool-versions.json)
+          cdxgen container tag override (default: from tool-versions.json)
         type: string
         required: false
       builder_image:
@@ -145,6 +140,7 @@ jobs:
   load_versions:
     name: Load tool versions
     runs-on: ubuntu-latest
+    # Timeout: Quick config parsing task (expected: <1 min)
     timeout-minutes: 5
     permissions:
       contents: read
@@ -157,7 +153,6 @@ jobs:
       jq_sha256: ${{ steps.resolve.outputs.jq_sha256 }}
       slsa_verifier_version: ${{ steps.resolve.outputs.slsa_verifier_version }}
       cdxgen_version: ${{ steps.resolve.outputs.cdxgen_version }}
-      node_version: ${{ steps.resolve.outputs.node_version }}
       builder_image: ${{ steps.resolve.outputs.builder_image }}
     steps:
       - name: Validate required inputs
@@ -186,8 +181,13 @@ jobs:
           egress-policy: block
           allowed-endpoints: >
             api.github.com:443
+            artifactcache.actions.githubusercontent.com:443
+            auth.docker.io:443
             github.com:443
             objects.githubusercontent.com:443
+            pkg-containers.githubusercontent.com:443
+            production.cloudflare.docker.com:443
+            registry-1.docker.io:443
 
       - name: Checkout workflow repo
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
@@ -208,7 +208,6 @@ jobs:
           INPUT_JQ_SHA256: ${{ inputs.jq_sha256 }}
           INPUT_SLSA_VERIFIER_VERSION: ${{ inputs.slsa_verifier_version }}
           INPUT_CDXGEN_VERSION: ${{ inputs.cdxgen_version }}
-          INPUT_NODE_VERSION: ${{ inputs.node_version }}
           INPUT_BUILDER_IMAGE: ${{ inputs.builder_image }}
         run: |
           set -euo pipefail
@@ -222,8 +221,14 @@ jobs:
           jq_version="${INPUT_JQ_VERSION:-$(jq -r '.tools.jq.version' "$CONFIG")}"
           jq_sha256="${INPUT_JQ_SHA256:-$(jq -r '.tools.jq.sha256' "$CONFIG")}"
           slsa_verifier_version="${INPUT_SLSA_VERIFIER_VERSION:-$(jq -r '.tools["slsa-verifier"].version' "$CONFIG")}"
-          cdxgen_version="${INPUT_CDXGEN_VERSION:-$(jq -r '.tools.cdxgen.version' "$CONFIG")}"
-          node_version="${INPUT_NODE_VERSION:-$(jq -r '.tools.node.version' "$CONFIG")}"
+          
+          # cdxgen is a container image (like builder-image)
+          if [[ -n "${INPUT_CDXGEN_VERSION:-}" ]]; then
+            cdxgen_version="${INPUT_CDXGEN_VERSION}"
+          else
+            cdxgen_tag=$(jq -r '.tools.cdxgen.tag' "$CONFIG")
+            cdxgen_version="${cdxgen_tag}"
+          fi
 
           # Build builder_image from components if not overridden
           if [[ -n "${INPUT_BUILDER_IMAGE:-}" ]]; then
@@ -245,7 +250,6 @@ jobs:
             echo "jq_sha256=${jq_sha256}"
             echo "slsa_verifier_version=${slsa_verifier_version}"
             echo "cdxgen_version=${cdxgen_version}"
-            echo "node_version=${node_version}"
             echo "builder_image=${builder_image}"
           } >> "$GITHUB_OUTPUT"
 
@@ -255,8 +259,15 @@ jobs:
           echo "  jq: ${jq_version} (sha256: ${jq_sha256:0:16}...)"
           echo "  slsa-verifier: ${slsa_verifier_version}"
           echo "  cdxgen: ${cdxgen_version}"
-          echo "  node: ${node_version}"
           echo "  builder-image: ${builder_image}"
+
+      - name: Pull builder image
+        env:
+          BUILDER_IMAGE: ${{ steps.resolve.outputs.builder_image }}
+        run: |
+          set -euo pipefail
+          echo "[INFO] Pulling builder image: ${BUILDER_IMAGE}" >&2
+          docker pull "${BUILDER_IMAGE}"
 
   # ===============================================================
   # Hermetic source packaging (offline, containerized)
@@ -266,6 +277,7 @@ jobs:
     needs: load_versions
     if: ${{ inputs.dry_run || github.ref_type == 'tag' }}
     runs-on: ubuntu-latest
+    # Timeout: Packaging script with reproducible builds (expected: 5-10 min)
     timeout-minutes: 15
     container:
       image: ${{ needs.load_versions.outputs.builder_image }}
@@ -337,7 +349,7 @@ jobs:
       - name: Upload packaging bundle
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: package-${{ steps.package.outputs.artifact_filename }}
+          name: ${{ steps.package.outputs.artifact_filename }}
           retention-days: 7
           if-no-files-found: error
           path: |
@@ -352,12 +364,112 @@ jobs:
   # ===============================================================
   # SBOM generation, attestations, and release publishing
   # ===============================================================
-  sbom_and_release:
-    name: SBOM + Attest + Publish
+  generate_sbom:
+    name: Generate SBOM
     needs: [load_versions, package_source]
     if: ${{ inputs.dry_run || github.ref_type == 'tag' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Timeout: SBOM generation with cdxgen container (expected: 5-10 min for large repos)
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76
+        with:
+          disable-sudo: true
+          egress-policy: block
+          # Docker container pull for cdxgen (cached via actions/cache)
+          allowed-endpoints: >
+            artifactcache.actions.githubusercontent.com:443
+            ghcr.io:443
+            pkg-containers.githubusercontent.com:443
+
+      - name: Download packaged source
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          name: ${{ needs.package_source.outputs.artifact_filename }}
+          path: .
+
+      - name: Detect SBOM language
+        id: sbom_lang
+        env:
+          SBOM_LANGUAGE: ${{ inputs.sbom_language }}
+          TARBALL_NAME: ${{ needs.package_source.outputs.artifact_path }}
+        run: |
+          set -euo pipefail
+          lang="${SBOM_LANGUAGE:-auto}"
+          if [[ "$lang" == "auto" ]]; then
+            if tar -tzf "$TARBALL_NAME" | grep -q '^[^/]*/go.mod$'; then
+              lang="go"
+            else
+              lang="generic"
+            fi
+          fi
+          echo "lang=${lang}" >> "$GITHUB_OUTPUT"
+          echo "[INFO] Detected SBOM language: ${lang}" >&2
+
+      - name: Pull cdxgen image
+        if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
+        env:
+          CDXGEN_VERSION: ${{ needs.load_versions.outputs.cdxgen_version }}
+        run: |
+          set -euo pipefail
+          version="${CDXGEN_VERSION:-v12.0.0}"
+          image="ghcr.io/cyclonedx/cdxgen:${version}"
+          echo "[INFO] Pulling cdxgen image: ${image}" >&2
+          docker pull "${image}"
+
+      - name: Extract source for SBOM generation
+        run: |
+          set -euo pipefail
+          mkdir -p sbom-workspace
+          tar -xzf "${{ needs.package_source.outputs.artifact_path }}" -C sbom-workspace --strip-components=1
+
+      - name: Generate CycloneDX SBOM (generic)
+        if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
+        env:
+          CDXGEN_VERSION: ${{ needs.load_versions.outputs.cdxgen_version }}
+        run: |
+          set -euo pipefail
+          version="${CDXGEN_VERSION:-v12.0.0}"
+          image="ghcr.io/cyclonedx/cdxgen:${version}"
+          
+          echo "[INFO] Generating SBOM with cdxgen container: ${image}" >&2
+          docker run --rm \
+            -v "$PWD/sbom-workspace:/app:ro" \
+            -w /tmp \
+            "${image}" \
+            -o /tmp/sbom.cdx.json \
+            /app > sbom.cdx.json
+          
+          echo "[INFO] SBOM generated successfully" >&2
+
+      - name: Generate CycloneDX SBOM (Go modules)
+        if: ${{ steps.sbom_lang.outputs.lang == 'go' }}
+        uses: CycloneDX/gh-gomod-generate-sbom@171199f37bbd0f611db19484319e87d2ee441f97
+        with:
+          version: 1
+          args: mod -licenses -json -output sbom.cdx.json sbom-workspace
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: sbom-cdx-json
+          path: sbom.cdx.json
+          retention-days: 1
+          if-no-files-found: error
+
+  # ===============================================================
+  # SBOM attestation and release publishing
+  # ===============================================================
+  sbom_and_release:
+    name: Attest + Publish
+    needs: [load_versions, package_source, generate_sbom]
+    if: ${{ inputs.dry_run || github.ref_type == 'tag' }}
+    runs-on: ubuntu-latest
+    # Timeout: Attestation and publishing (expected: 5-10 min)
+    timeout-minutes: 15
     container:
       image: ${{ needs.load_versions.outputs.builder_image }}
     permissions:
@@ -372,19 +484,18 @@ jobs:
         with:
           disable-sudo: true
           egress-policy: block
+          # Security Note: SBOM generated in separate job using cdxgen container.
+          # No npm registry access required in this job.
           allowed-endpoints: >
             api.github.com:443
             artifactcache.actions.githubusercontent.com:443
             ctfe.sigstore.dev:443
             fulcio.sigstore.dev:443
             github.com:443
-            nodejs.org:443
             oauth2.sigstore.dev:443
             objects.githubusercontent.com:443
             pipelines.actions.githubusercontent.com:443
-            pkg-containers.githubusercontent.com:443
             proxy.golang.org:443
-            registry.npmjs.org:443
             rekor.sigstore.dev:443
             release-assets.githubusercontent.com:443
             sum.golang.org:443
@@ -451,7 +562,7 @@ jobs:
       - name: Download packaging bundle
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
-          name: package-${{ needs.package_source.outputs.artifact_filename }}
+          name: ${{ needs.package_source.outputs.artifact_filename }}
           path: package
 
       - name: Prepare artifact paths
@@ -468,41 +579,37 @@ jobs:
             echo "metadata_path=package/verification.json"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Download SBOM
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          name: sbom-cdx-json
+          path: .
+
       - name: Install cosign
         if: ${{ !inputs.dry_run && inputs.sign_blobs }}
+        shell: bash
         env:
           COSIGN_VERSION: ${{ needs.load_versions.outputs.cosign_version }}
           COSIGN_SHA256: ${{ needs.load_versions.outputs.cosign_sha256 }}
         run: |
           set -euo pipefail
-          curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
+          cosign_url="https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
+          echo "[DEBUG] Downloading cosign from: ${cosign_url}" >&2
+          
+          if ! curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
             --proto '=https' --proto-redir '=https' --max-redirs 1 \
-            -o cosign "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
+            -o cosign "${cosign_url}" 2>&1; then
+            echo "[ERROR] Failed to download cosign" >&2
+            echo "[ERROR] URL: ${cosign_url}" >&2
+            http_code=$(curl -sI -o /dev/null -w "%{http_code}" "${cosign_url}" 2>&1 || echo "failed")
+            echo "[ERROR] HTTP response code: ${http_code}" >&2
+            exit 1
+          fi
+          
+          echo "[DEBUG] Verifying cosign SHA256 checksum" >&2
           echo "${COSIGN_SHA256}  cosign" | sha256sum -c -
           install -m 0755 cosign /usr/local/bin/cosign
-
-      - name: Setup Node (for cdxgen)
-        if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238
-        with:
-          node-version: ${{ needs.load_versions.outputs.node_version }}
-
-      - name: Generate CycloneDX SBOM (generic)
-        if: ${{ steps.sbom_lang.outputs.lang == 'generic' }}
-        env:
-          CDXGEN_VERSION: ${{ needs.load_versions.outputs.cdxgen_version }}
-        run: |
-          set -euo pipefail
-          version="${CDXGEN_VERSION:-latest}"
-          version="${version#v}"
-          npx --yes "@cyclonedx/cdxgen@${version}" -o sbom.cdx.json .
-
-      - name: Generate CycloneDX SBOM (Go modules)
-        if: ${{ steps.sbom_lang.outputs.lang == 'go' }}
-        uses: CycloneDX/gh-gomod-generate-sbom@171199f37bbd0f611db19484319e87d2ee441f97
-        with:
-          version: 1
-          args: mod -licenses -json -output sbom.cdx.json .
+          echo "[DEBUG] Successfully installed Cosign ${COSIGN_VERSION}" >&2
 
       - name: Attest SBOM (bind SBOM to tarball digest)
         if: ${{ !inputs.dry_run }}

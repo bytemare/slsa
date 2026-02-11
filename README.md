@@ -133,7 +133,7 @@ For detailed configuration options, see [Release - How to Use the Workflow](#rel
 | `cosign` | Signature verification | [Install guide](https://docs.sigstore.dev/cosign/system_config/installation/) |
 | `gh` | GitHub API access (outside Actions) | [Install guide](https://cli.github.com/) |
 | `slsa-verifier` | `--mode full` | [Install guide](https://github.com/slsa-framework/slsa-verifier#installation) |
-| `docker` | `--mode reproduce` | [Install guide](https://docs.docker.com/get-docker/) |
+| `docker` | `--mode reproduce` (runs hermetically with `--network none`) | [Install guide](https://docs.docker.com/get-docker/) |
 
 ```bash
 # Show all options
@@ -187,7 +187,7 @@ jobs:
       security-events: write   # Upload SARIF (optional)
 ```
 
-`packaging_language=auto` detects `go.mod` in the tagged commit and enables Go-specific metadata only when present. `sbom_language=auto` uses the Go SBOM generator when `go.mod` exists, otherwise it runs cdxgen (pin `cdxgen_version` for deterministic output).
+`packaging_language=auto` detects `go.mod` in the tagged commit and enables Go-specific metadata only when present. `sbom_language=auto` uses the Go SBOM generator when `go.mod` exists, otherwise it runs cdxgen via container (pin `cdxgen_version` for deterministic output).
 
 ### Inform your users
 
@@ -242,8 +242,10 @@ chmod +x verify-release.sh
   entire release, ensuring that all the pieces of the puzzle (artifacts, signatures, attestations, provenance,
   and SBOM) fit together correctly, providing a much higher level of confidence in the integrity and
   authenticity of the release.
-- **reproduce** - Hermetic rebuild using the `SLSA_BUILDER_IMAGE` recorded in `build.env` (defaults to
-  `golang:1.25-bookworm@sha256:...`), yielding independent evidence for future Level 4 expectations.
+- **reproduce** - Hermetic rebuild in a network-isolated container (`--network none`) using the `SLSA_BUILDER_IMAGE`
+  recorded in `build.env` (defaults to `golang:1.25-bookworm@sha256:...`). All downloads and validation happen on
+  the host before files are mounted read-only into the container, ensuring zero network access during rebuild.
+  This provides independent reproducibility evidence matching SLSA Build Track Level 3+ requirements.
 
 The script automatically:
 - Checks for required tools (curl, jq, cosign, sha256sum, gh for attestations, slsa-verifier for full mode, docker for reproduce mode)
@@ -380,7 +382,6 @@ When [Renovate](https://docs.renovatebot.com/) detects a new tool version, it op
 4. Commits the change to the PR
 
 This keeps hashes synchronized with versions while maintaining full auditability—all hash changes are visible in PR diffs.
-
 ### Industry Alignment
 
 This approach follows patterns used by security-focused projects:

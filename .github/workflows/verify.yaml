@@ -98,6 +98,7 @@ jobs:
   load_versions:
     name: Load tool versions
     runs-on: ubuntu-latest
+    # Timeout: Quick config parsing task (expected: <1 min)
     timeout-minutes: 5
     permissions:
       contents: read
@@ -106,6 +107,8 @@ jobs:
       cosign_sha256: ${{ steps.resolve.outputs.cosign_sha256 }}
       slsa_verifier_version: ${{ steps.resolve.outputs.slsa_verifier_version }}
       builder_image: ${{ steps.resolve.outputs.builder_image }}
+      gh_version: ${{ steps.resolve.outputs.gh_version }}
+      gh_sha256: ${{ steps.resolve.outputs.gh_sha256 }}
       artifact_tag: ${{ steps.validate.outputs.tag }}
     steps:
       - name: Validate required inputs
@@ -186,6 +189,8 @@ jobs:
           cosign_version="${INPUT_COSIGN_VERSION:-$(jq -r '.tools.cosign.version' "$CONFIG")}"
           cosign_sha256="${INPUT_COSIGN_SHA256:-$(jq -r '.tools.cosign.sha256' "$CONFIG")}"
           slsa_verifier_version="${INPUT_SLSA_VERIFIER_VERSION:-$(jq -r '.tools["slsa-verifier"].version' "$CONFIG")}"
+          gh_version=$(jq -r '.tools.gh.version' "$CONFIG")
+          gh_sha256=$(jq -r '.tools.gh.sha256' "$CONFIG")
 
           if [[ -n "${INPUT_BUILDER_IMAGE:-}" ]]; then
             builder_image="${INPUT_BUILDER_IMAGE}"
@@ -201,6 +206,8 @@ jobs:
             echo "cosign_sha256=${cosign_sha256}"
             echo "slsa_verifier_version=${slsa_verifier_version}"
             echo "builder_image=${builder_image}"
+            echo "gh_version=${gh_version}"
+            echo "gh_sha256=${gh_sha256}"
           } >> "$GITHUB_OUTPUT"
 
           echo "Resolved tool versions:"
@@ -215,6 +222,14 @@ jobs:
     name:  Run verification modes
     needs: load_versions
     runs-on: ubuntu-latest
+    # Timeout considerations:
+    # - Network latency for tool downloads: 2-5 minutes
+    # - Download and verify release artifacts: 2-5 minutes  
+    # - SLSA provenance verification: 1-3 minutes
+    # - Reproduce mode with Docker builds: 10-20 minutes
+    # - VSA generation and signing: 1-2 minutes
+    # - Buffer for GitHub Actions infrastructure delays: 5 minutes
+    # Total: 30 minutes provides adequate headroom for all modes
     timeout-minutes: 30
     permissions:
       contents: write
@@ -297,9 +312,23 @@ jobs:
             echo "metadata<<EOF"
             printf 'workflow_ref=%s\n' "${WORKFLOW_REF}"
             printf 'script_sha=%s\n' "${script_sha}"
+            
+            # Validate user-provided metadata
             if [[ -n "${USER_METADATA:-}" ]]; then
-              printf '%s\n' "${USER_METADATA}"
+              # Validate each line: only allow key=value format with safe characters
+              while IFS= read -r line; do
+                if [[ -z "$line" ]]; then
+                  continue
+                fi
+                # Only allow: alphanumeric, dash, underscore, dot, slash, colon in key and value
+                if ! echo "$line" | grep -qE '^[a-zA-Z0-9_-]+=[a-zA-Z0-9._/:-]+$'; then
+                  echo "::error::Invalid verifier_metadata format: '$line'. Must be key=value with alphanumeric characters only." >&2
+                  exit 1
+                fi
+                printf '%s\n' "$line"
+              done <<< "$USER_METADATA"
             fi
+            
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -363,36 +392,48 @@ jobs:
             echo "need_verifier=$need_verifier"
             echo "need_docker=$need_docker"
           } >> "$GITHUB_OUTPUT"
-
-          if [[ "$need_verifier" == "true" ]]; then
-            cosign_url="https://github.com/sigstore/cosign/releases/download/${GHA_COSIGN_VERSION}/cosign-linux-amd64"
-            echo "[DEBUG] Downloading cosign from: ${cosign_url}" >&2
-            
-            if ! curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
-              --proto '=https' --proto-redir '=https' --max-redirs 1 \
-              -o cosign "${cosign_url}" 2>&1; then
-              echo "[ERROR] Failed to download cosign" >&2
-              echo "[ERROR] URL: ${cosign_url}" >&2
-              http_code=$(curl -sI -o /dev/null -w "%{http_code}" "${cosign_url}" 2>&1 || echo "failed")
-              echo "[ERROR] HTTP response code: ${http_code}" >&2
-              exit 1
-            fi
-            
-            echo "[DEBUG] Verifying cosign SHA256 checksum" >&2
-            echo "${GHA_COSIGN_SHA256}  cosign" | sha256sum -c -
-            install -m 0755 cosign /usr/local/bin/cosign
-            echo "[DEBUG] successfully installed Cosign" >&2
-
-            echo "[DEBUG] Installing slsa-verifier via go install" >&2
-            go install github.com/slsa-framework/slsa-verifier/v2/cli/slsa-verifier@"${GHA_SLSA_VERIFIER_VERSION}"
-            echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-            echo "[DEBUG] successfully installed slsa-verifier" >&2
-          fi
   
           if [[ "$need_docker" == "true" ]]; then
             docker info >/dev/null
             docker pull "${GHA_BUILDER_IMAGE}" >/dev/null
           fi
+
+      - name: Install Cosign
+        if: steps.setup.outputs.need_verifier == 'true'
+        shell: bash
+        env:
+          COSIGN_VERSION: ${{ needs.load_versions.outputs.cosign_version }}
+          COSIGN_SHA256: ${{ needs.load_versions.outputs.cosign_sha256 }}
+        run: |
+          set -euo pipefail
+          cosign_url="https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
+          echo "[DEBUG] Downloading cosign from: ${cosign_url}" >&2
+          
+          if ! curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
+            --proto '=https' --proto-redir '=https' --max-redirs 1 \
+            -o cosign "${cosign_url}" 2>&1; then
+            echo "[ERROR] Failed to download cosign" >&2
+            echo "[ERROR] URL: ${cosign_url}" >&2
+            http_code=$(curl -sI -o /dev/null -w "%{http_code}" "${cosign_url}" 2>&1 || echo "failed")
+            echo "[ERROR] HTTP response code: ${http_code}" >&2
+            exit 1
+          fi
+          
+          echo "[DEBUG] Verifying cosign SHA256 checksum" >&2
+          echo "${COSIGN_SHA256}  cosign" | sha256sum -c -
+          install -m 0755 cosign /usr/local/bin/cosign
+          echo "[DEBUG] Successfully installed Cosign ${COSIGN_VERSION}" >&2
+
+      - name: Install slsa-verifier
+        if: steps.setup.outputs.need_verifier == 'true'
+        shell: bash
+        env:
+          SLSA_VERIFIER_VERSION: ${{ needs.load_versions.outputs.slsa_verifier_version }}
+        run: |
+          echo "[DEBUG] Installing slsa-verifier via go install" >&2
+          go install github.com/slsa-framework/slsa-verifier/v2/cli/slsa-verifier@"${SLSA_VERIFIER_VERSION}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          echo "[DEBUG] Successfully installed slsa-verifier" >&2
 
       - name: Run verification modes
         env:
@@ -502,17 +543,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
           TARGET_REPO: ${{ inputs.repo }}
+          GH_VERSION: ${{ needs.load_versions.outputs.gh_version }}
+          GH_SHA256: ${{ needs.load_versions.outputs.gh_sha256 }}
         run: |
           set -euo pipefail
           
           # Install gh CLI if not present
           if ! command -v gh &> /dev/null; then
             echo "Installing gh CLI..."
+            GH_VERSION_CLEAN="${GH_VERSION#v}"
             curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
               --proto '=https' --proto-redir '=https' --max-redirs 1 \
-              -o gh.tar.gz "https://github.com/cli/cli/releases/download/v2.40.1/gh_2.40.1_linux_amd64.tar.gz"
+              -o gh.tar.gz "https://github.com/cli/cli/releases/download/${GH_VERSION}/gh_${GH_VERSION_CLEAN}_linux_amd64.tar.gz"
+            echo "${GH_SHA256}  gh.tar.gz" | sha256sum -c -
             tar -xzf gh.tar.gz
-            install -m 0755 gh_2.40.1_linux_amd64/bin/gh /usr/local/bin/gh
+            install -m 0755 "gh_${GH_VERSION_CLEAN}_linux_amd64/bin/gh" /usr/local/bin/gh
           fi
           
           echo "Uploading VSA files to release ${RELEASE_TAG}..."
@@ -533,7 +578,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Verifying uploaded VSA with retry logic..."
-          for attempt in 1 2 3 4 5; do
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
             if ./slsa-workflow/verify-release.sh \
                 --repo "$TARGET_REPO" \
                 --tag "$RELEASE_TAG" \
@@ -542,10 +587,10 @@ jobs:
               echo "VSA verification succeeded"
               exit 0
             fi
-            echo "VSA not available yet (attempt ${attempt}/5); retrying in 6s..." >&2
-            sleep 6
+            echo "VSA not available yet (attempt ${attempt}/10); retrying in 10s..." >&2
+            sleep 10
           done
-          echo "::error title=VSA Verification Failed::VSA verification failed after 5 attempts" >&2
+          echo "::error title=VSA Verification Failed::VSA verification failed after 10 attempts (100s total)" >&2
           exit 1
 
       - name: Upload VSA artifact
