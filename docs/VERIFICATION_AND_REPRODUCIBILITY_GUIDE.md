@@ -444,7 +444,7 @@ Should show:
 The reproduce mode implements true hermetic execution matching SLSA Build Track requirements:
 
 | Aspect | Implementation | Security Benefit |
-|--------|----------------|------------------|
+| ------ | -------------- | ---------------- |
 | **Network Isolation** | Container runs with `--network none` | Zero network access prevents data exfiltration |
 | **Input Validation** | All artifacts downloaded and validated on host before container execution | Host performs integrity checks with full tooling |
 | **Read-Only Mounts** | Repository and artifacts mounted as `:ro` volumes | Container cannot tamper with inputs |
@@ -452,10 +452,10 @@ The reproduce mode implements true hermetic execution matching SLSA Build Track 
 | **No Secrets** | No credentials or tokens passed to container | Eliminates credential exposure risk |
 
 **Workflow:**
-```
+```text
 Host (network enabled):
   1. Download artifacts from GitHub releases
-  2. Validate digests and script integrity  
+  2. Validate digests and script integrity
   3. Clone repository from GitHub
   4. Prepare read-only volume mounts
 

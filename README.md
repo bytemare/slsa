@@ -242,9 +242,9 @@ chmod +x verify-release.sh
   entire release, ensuring that all the pieces of the puzzle (artifacts, signatures, attestations, provenance,
   and SBOM) fit together correctly, providing a much higher level of confidence in the integrity and
   authenticity of the release.
-- **reproduce** - Hermetic rebuild in a network-isolated container (`--network none`) using the `SLSA_BUILDER_IMAGE` 
-  recorded in `build.env` (defaults to `golang:1.25-bookworm@sha256:...`). All downloads and validation happen on 
-  the host before files are mounted read-only into the container, ensuring zero network access during rebuild. 
+- **reproduce** - Hermetic rebuild in a network-isolated container (`--network none`) using the `SLSA_BUILDER_IMAGE`
+  recorded in `build.env` (defaults to `golang:1.25-bookworm@sha256:...`). All downloads and validation happen on
+  the host before files are mounted read-only into the container, ensuring zero network access during rebuild.
   This provides independent reproducibility evidence matching SLSA Build Track Level 3+ requirements.
 
 The script automatically:
