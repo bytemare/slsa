@@ -24,7 +24,7 @@ For releases prior to this changelog, see [GitHub Releases](https://github.com/b
   - External verifiers emit VSA as workflow artifact only
 - **verify.yaml** workflow restructured for least-privilege permissions
   - Split into conditional jobs: `run_verification` (read-only), `emit_vsa_artifact` (id-token: write)
-  - `run_verification` downgraded to `contents: read` + `id-token: read` (was: write permissions)
+  - `run_verification` downgraded to `contents: read` (was: write + id-token: write permissions)
   - VSA signing moved to separate `emit_vsa_artifact` job with minimal permissions
   - Enables truly read-only verification for external consumers
 - **slsa.yaml** now handles VSA upload independently
@@ -45,7 +45,7 @@ For releases prior to this changelog, see [GitHub Releases](https://github.com/b
 
 ### Security
 - Enforced least-privilege permissions across all workflows
-  - External consumers of `verify.yaml` now require only `contents: read` + `id-token: read`
+  - External consumers of `verify.yaml` now require only `contents: read`
   - VSA upload restricted to `slsa.yaml` which already has `contents: write` for releases
   - Tool version tampering prevented by removing all override mechanisms
 - Input validation prevents injection attacks and silent failures

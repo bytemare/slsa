@@ -234,7 +234,6 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      id-token: read
     steps:
       - name: Harden runner
         uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76
