@@ -77,7 +77,7 @@ on:
 #                                                                 #
 ###################################################################
 
-permissions: { }
+permissions: {}
 
 concurrency:
   group: release-${{ github.repository }}-${{ github.ref }}
@@ -646,149 +646,6 @@ jobs:
             package/verification.json
 
   # ===============================================================
-  # Post-release verification and VSA emission
-  # ===============================================================
-  verify_release_workflow:
-    name: Verify release (reusable workflow)
-    if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
-    needs: [sbom_and_release, provenance_slsa]
-    permissions:
-      contents: read
-    uses: ./.github/workflows/verify.yaml
-    with:
-      repo: ${{ github.repository }}
-      tag: ${{ github.ref_name }}
-      mode: full,reproduce
-      emit_vsa: true
-      resource_uri: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
-      policy_uri: https://github.com/${{ inputs.workflow_repo }}/blob/${{ inputs.workflow_ref }}/verify-release.sh
-      workflow_repo: ${{ inputs.workflow_repo }}
-      workflow_ref: ${{ inputs.workflow_ref }}
-
-  # ===============================================================
-  # Upload VSA to GitHub release
-  # ===============================================================
-  upload_vsa_to_release:
-    name: Upload VSA to release
-    if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
-    needs: [load_versions, verify_release_workflow]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76
-        with:
-          disable-sudo: true
-          egress-policy: block
-          allowed-endpoints: >
-            api.github.com:443
-            fulcio.sigstore.dev:443
-            github-releases.githubusercontent.com:443
-            github.com:443
-            objects.githubusercontent.com:443
-            pipelines.actions.githubusercontent.com:443
-            rekor.sigstore.dev:443
-            storage.googleapis.com:443
-            timestamp.sigstore.dev:443
-            tmaproduction.blob.core.windows.net:443
-            tuf-repo-cdn.sigstore.dev:443
-            tuf-repo.github.com:443
-            uploads.github.com:443
-
-      - name: Download signed VSA from verification workflow
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
-        with:
-          name: vsa-${{ github.ref_name }}
-
-      - name: Install gh CLI
-        env:
-          GH_VERSION: ${{ needs.load_versions.outputs.gh_version }}
-          GH_SHA256: ${{ needs.load_versions.outputs.gh_sha256 }}
-        run: |
-          set -euo pipefail
-          if command -v gh &> /dev/null; then
-            echo "gh CLI already installed"
-            gh version
-            exit 0
-          fi
-          echo "Installing gh CLI ${GH_VERSION}..."
-          GH_VERSION_CLEAN="${GH_VERSION#v}"
-          curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
-            --proto '=https' --proto-redir '=https' --max-redirs 1 \
-            -o gh.tar.gz "https://github.com/cli/cli/releases/download/${GH_VERSION}/gh_${GH_VERSION_CLEAN}_linux_amd64.tar.gz"
-          echo "${GH_SHA256}  gh.tar.gz" | sha256sum -c -
-          tar -xzf gh.tar.gz
-          install -m 0755 "gh_${GH_VERSION_CLEAN}_linux_amd64/bin/gh" /usr/local/bin/gh
-          gh version
-
-      - name: Upload VSA to release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
-          TARGET_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          echo "Uploading VSA files to release ${RELEASE_TAG}..."
-          gh release upload "${RELEASE_TAG}" \
-            verification-summary.attestation.json \
-            verification-summary.attestation.json.bundle \
-            --repo "${TARGET_REPO}" \
-            --clobber
-
-      - name: Install Cosign for verification
-        env:
-          COSIGN_VERSION: ${{ needs.load_versions.outputs.cosign_version }}
-          COSIGN_SHA256: ${{ needs.load_versions.outputs.cosign_sha256 }}
-        run: |
-          set -euo pipefail
-          echo "Installing cosign ${COSIGN_VERSION} for VSA verification..."
-          curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
-            --proto '=https' --proto-redir '=https' --max-redirs 1 \
-            -o cosign-linux-amd64 \
-            "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
-          echo "${COSIGN_SHA256}  cosign-linux-amd64" | sha256sum -c -
-          install -m 0755 cosign-linux-amd64 /usr/local/bin/cosign
-          cosign version
-
-      - name: Checkout workflow repo for verification
-        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
-        with:
-          repository: ${{ inputs.workflow_repo }}
-          ref: ${{ inputs.workflow_ref }}
-          sparse-checkout: |
-            verify-release.sh
-            scripts
-          fetch-depth: 1
-          path: slsa-workflow
-
-      - name: Verify uploaded VSA
-        env:
-          COSIGN_EXPERIMENTAL: 1
-          GH_TOKEN: ${{ github.token }}
-          TARGET_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.ref_name }}
-          SIGNER_REPO: ${{ inputs.workflow_repo }}
-        run: |
-          set -euo pipefail
-          echo "Verifying uploaded VSA with retry logic..."
-          for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            if ./slsa-workflow/verify-release.sh \
-                --repo "${TARGET_REPO}" \
-                --tag "${RELEASE_TAG}" \
-                --mode vsa \
-                --signer-repo "${SIGNER_REPO}"; then
-              echo "VSA verification succeeded"
-              exit 0
-            fi
-            echo "VSA not available yet (attempt ${attempt}/10); retrying in 10s..." >&2
-            sleep 10
-          done
-          echo "::error title=VSA Verification Failed::VSA verification failed after 10 attempts (100s total)" >&2
-          exit 1
-
-  # ===============================================================
   # Reproducibility check (SLSA Level 4 preparation)
   # ===============================================================
   rebuild_verify:
@@ -889,3 +746,161 @@ jobs:
       actions: read
       id-token: write
       contents: write
+
+  # ===============================================================
+  # Post-release verification and VSA emission
+  # ===============================================================
+  verify_release_workflow:
+    name: Verify release (reusable workflow)
+    if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
+    needs: [sbom_and_release, provenance_slsa]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/verify.yaml
+    with:
+      repo: ${{ github.repository }}
+      tag: ${{ github.ref_name }}
+      mode: full,reproduce
+      emit_vsa: true
+      resource_uri: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+      policy_uri: https://github.com/${{ inputs.workflow_repo }}/blob/${{ inputs.workflow_ref }}/verify-release.sh
+      workflow_repo: ${{ inputs.workflow_repo }}
+      workflow_ref: ${{ inputs.workflow_ref }}
+
+  # ===============================================================
+  # Upload VSA to GitHub release
+  # ===============================================================
+  upload_vsa_to_release:
+    name: Sign and upload signed VSA to release
+    if: ${{ !inputs.dry_run && inputs.create_release && inputs.sign_blobs }}
+    needs: [load_versions, verify_release_workflow]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            fulcio.sigstore.dev:443
+            github-releases.githubusercontent.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            pipelines.actions.githubusercontent.com:443
+            rekor.sigstore.dev:443
+            storage.googleapis.com:443
+            timestamp.sigstore.dev:443
+            tmaproduction.blob.core.windows.net:443
+            tuf-repo-cdn.sigstore.dev:443
+            tuf-repo.github.com:443
+            uploads.github.com:443
+
+      - name: Download unsigned VSA from verification workflow
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          name: vsa-unsigned-${{ github.ref_name }}
+
+      - name: Install Cosign for VSA signing
+        env:
+          COSIGN_VERSION: ${{ needs.load_versions.outputs.cosign_version }}
+          COSIGN_SHA256: ${{ needs.load_versions.outputs.cosign_sha256 }}
+        run: |
+          set -euo pipefail
+          echo "Installing cosign ${COSIGN_VERSION} for VSA signing..."
+          curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
+            --proto '=https' --proto-redir '=https' --max-redirs 1 \
+            -o cosign-linux-amd64 \
+            "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
+          echo "${COSIGN_SHA256}  cosign-linux-amd64" | sha256sum -c -
+          install -m 0755 cosign-linux-amd64 /usr/local/bin/cosign
+          cosign version
+
+      - name: Sign VSA
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          set -euo pipefail
+          echo "Signing VSA with Sigstore keyless..."
+          if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]]; then
+            echo "VSA signing requires id-token: write permissions" >&2
+            exit 1
+          fi
+          rm -f verification-summary.attestation.json.bundle
+          cosign sign-blob --yes --bundle verification-summary.attestation.json.bundle verification-summary.attestation.json
+          echo "VSA signed successfully"
+
+      - name: Install gh CLI
+        env:
+          GH_VERSION: ${{ needs.load_versions.outputs.gh_version }}
+          GH_SHA256: ${{ needs.load_versions.outputs.gh_sha256 }}
+        run: |
+          set -euo pipefail
+          if command -v gh &> /dev/null; then
+            echo "gh CLI already installed"
+            gh version
+            exit 0
+          fi
+          echo "Installing gh CLI ${GH_VERSION}..."
+          GH_VERSION_CLEAN="${GH_VERSION#v}"
+          curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
+            --proto '=https' --proto-redir '=https' --max-redirs 1 \
+            -o gh.tar.gz "https://github.com/cli/cli/releases/download/${GH_VERSION}/gh_${GH_VERSION_CLEAN}_linux_amd64.tar.gz"
+          echo "${GH_SHA256}  gh.tar.gz" | sha256sum -c -
+          tar -xzf gh.tar.gz
+          install -m 0755 "gh_${GH_VERSION_CLEAN}_linux_amd64/bin/gh" /usr/local/bin/gh
+          gh version
+
+      - name: Upload VSA to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          TARGET_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          echo "Uploading VSA files to release ${RELEASE_TAG}..."
+          gh release upload "${RELEASE_TAG}" \
+            verification-summary.attestation.json \
+            verification-summary.attestation.json.bundle \
+            --repo "${TARGET_REPO}" \
+            --clobber
+
+      - name: Checkout workflow repo for verification
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+        with:
+          repository: ${{ inputs.workflow_repo }}
+          ref: ${{ inputs.workflow_ref }}
+          sparse-checkout: |
+            verify-release.sh
+            scripts
+          fetch-depth: 1
+          path: slsa-workflow
+
+      - name: Verify uploaded VSA
+        env:
+          COSIGN_EXPERIMENTAL: 1
+          GH_TOKEN: ${{ github.token }}
+          TARGET_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          SIGNER_REPO: ${{ inputs.workflow_repo }}
+        run: |
+          set -euo pipefail
+          echo "Verifying uploaded VSA with retry logic..."
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if ./slsa-workflow/verify-release.sh \
+                --repo "${TARGET_REPO}" \
+                --tag "${RELEASE_TAG}" \
+                --mode vsa \
+                --signer-repo "${SIGNER_REPO}"; then
+              echo "VSA verification succeeded"
+              exit 0
+            fi
+            echo "VSA not available yet (attempt ${attempt}/10); retrying in 10s..." >&2
+            sleep 10
+          done
+          echo "::error title=VSA Verification Failed::VSA verification failed after 10 attempts (100s total)" >&2
+          exit 1

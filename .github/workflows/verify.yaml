@@ -524,7 +524,7 @@ jobs:
             exit 1
           fi
 
-      - name: Upload VSA
+      - name: Upload unsigned VSA
         if: ${{ inputs.emit_vsa }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
@@ -532,75 +532,3 @@ jobs:
           if-no-files-found: error
           retention-days: 1
           path: verification-summary.attestation.json
-
-  # ===============================================================
-  # Emit VSA as workflow artifact
-  # ===============================================================
-  emit_vsa_artifact:
-    name: Sign and emit VSA
-    if: ${{ inputs.emit_vsa }}
-    needs: [load_versions, run_verification]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      id-token: write
-    steps:
-      - name: Harden runner
-        uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76
-        with:
-          disable-sudo: true
-          egress-policy: block
-          allowed-endpoints: >
-            api.github.com:443
-            fulcio.sigstore.dev:443
-            github.com:443
-            objects.githubusercontent.com:443
-            pipelines.actions.githubusercontent.com:443
-            rekor.sigstore.dev:443
-            storage.googleapis.com:443
-            timestamp.sigstore.dev:443
-            tmaproduction.blob.core.windows.net:443
-            tuf-repo-cdn.sigstore.dev:443
-            tuf-repo.github.com:443
-
-      - name: Download VSA from verification job
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
-        with:
-          name: vsa-unsigned-${{ needs.load_versions.outputs.artifact_tag }}
-
-      - name: Install Cosign
-        env:
-          COSIGN_VERSION: ${{ needs.load_versions.outputs.cosign_version }}
-          COSIGN_SHA256: ${{ needs.load_versions.outputs.cosign_sha256 }}
-        run: |
-          set -euo pipefail
-          echo "Installing cosign ${COSIGN_VERSION}..."
-
-          curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
-            --proto '=https' --proto-redir '=https' --max-redirs 1 \
-            -o cosign-linux-amd64 \
-            "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
-          echo "${COSIGN_SHA256}  cosign-linux-amd64" | sha256sum -c -
-          install -m 0755 cosign-linux-amd64 /usr/local/bin/cosign
-          cosign version
-
-      - name: Sign emitted VSA
-        env:
-          COSIGN_EXPERIMENTAL: 1
-        run: |
-          set -euo pipefail
-          if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]]; then
-            echo "VSA signing requires id-token: write permissions" >&2
-            exit 1
-          fi
-          rm -f verification-summary.attestation.json.bundle
-          cosign sign-blob --yes --bundle verification-summary.attestation.json.bundle verification-summary.attestation.json
-
-      - name: Upload VSA artifact
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        with:
-          name: vsa-${{ needs.load_versions.outputs.artifact_tag }}
-          if-no-files-found: error
-          path: |
-            verification-summary.attestation.json
-            verification-summary.attestation.json.bundle
