@@ -9,6 +9,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 For releases prior to this changelog, see [GitHub Releases](https://github.com/bytemare/ecc/releases).
 
+## v0.4.0 - 12/2/2026
+
+### Changed
+- **BREAKING**: Removed all tool version override inputs from both `slsa.yaml` and `verify.yaml`
+  - Removed: `cosign_version`, `cosign_sha256`, `gh_version`, `gh_sha256`, `jq_version`, `jq_sha256`, `slsa_verifier_version`, `cdxgen_version`, `builder_image`
+  - All tool versions now exclusively sourced from `.github/tool-versions.json`
+  - Enforces centralized security control and prevents override bypass attacks
+  - Simplifies workflow API from 15+ inputs to 6 core inputs
+- **BREAKING**: Removed VSA upload functionality from `verify.yaml`
+  - Removed inputs: `upload_to_release`, `verify_vsa_after_upload`
+  - VSA upload now handled exclusively by `slsa.yaml` for integrated release workflows
+  - `verify.yaml` now read-only (contents: read) for external consumers
+  - External verifiers emit VSA as workflow artifact only
+- **verify.yaml** workflow restructured for least-privilege permissions
+  - Split into conditional jobs: `run_verification` (read-only), `emit_vsa_artifact` (id-token: write)
+  - `run_verification` downgraded to `contents: read` + `id-token: read` (was: write permissions)
+  - VSA signing moved to separate `emit_vsa_artifact` job with minimal permissions
+  - Enables truly read-only verification for external consumers
+- **slsa.yaml** now handles VSA upload independently
+  - New `upload_vsa_to_release` job downloads already-signed VSA artifact from verification workflow
+  - Uploads signed VSA to GitHub release (no re-signing - verify.yaml signs it once)
+  - Includes retry verification logic (10 attempts, 100s total) for CDN propagation
+  - Clear separation: verify.yaml = verification + signing, slsa.yaml = upload only
+
+### Added
+- Comprehensive input validation in both workflows
+  - `verify.yaml`: Validates repo format (owner/name), mode values (quick/full/reproduce/vsa), emit_vsa consistency
+  - `slsa.yaml`: Validates packaging_language and sbom_language (auto/go/generic)
+  - Warnings for non-semver tags (still allowed)
+  - Fail-fast with clear error messages for invalid inputs
+- Docker image caching removed (caused disk space issues on GitHub Actions runners)
+  - Builder and cdxgen images now pulled fresh each run (~30-60s overhead)
+  - Simpler than managing /tmp space limits and tar files
+
+### Security
+- Enforced least-privilege permissions across all workflows
+  - External consumers of `verify.yaml` now require only `contents: read` + `id-token: read`
+  - VSA upload restricted to `slsa.yaml` which already has `contents: write` for releases
+  - Tool version tampering prevented by removing all override mechanisms
+- Input validation prevents injection attacks and silent failures
+  - Strict regex for repo format, allowed-list for mode/language values
+  - Comprehensive validation before any sensitive operations
+
 ## v0.3.0 - 11/2/2026
 
 ### Added

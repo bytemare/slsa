@@ -13,20 +13,19 @@ Complete SLSA Level 3 release workflows with consumer verification tooling and L
 
 > **SLSA v1.2 Note:** This project implements **SLSA Build Track Level 3** requirements. The SLSA v1.2 specification defines separate Build Track and Source Track levels. While this workflow operates on GitHub and benefits from GitHub's source control features, it focuses on Build Track compliance and does not explicitly claim Source Track levels.
 
-The SLSA ecosystem provides excellent building blocks — [slsa-github-generator](https://github.com/slsa-framework/slsa-github-generator) for provenance, [cosign](https://github.com/sigstore/cosign) for signing, [slsa-verifier](https://github.com/slsa-framework/slsa-verifier) for validation. But achieving *complete* SLSA compliance requires integrating these pieces into a cohesive workflow that handles:
+The SLSA ecosystem provides excellent building blocks — [slsa-github-generator](https://github.com/slsa-framework/slsa-github-generator) for provenance, [cosign](https://github.com/sigstore/cosign) for signing, [slsa-verifier](https://github.com/slsa-framework/slsa-verifier) for validation. But achieving 
 
+This project bridges the gap between "we have provenance" and "our users can independently verify everything", achieving *complete* SLSA compliance integrating these pieces into a cohesive workflow that handles:
 - **Deterministic source packaging** — reproducible archives with stable timestamps
 - **Consumer verification** — downloadable script your users can run locally
 - **Verification Summary Attestations (VSA)** — signed policy results for audit trails
 - **Level 4 preparation** — reproducibility evidence before the spec is finalized
 
-This project bridges the gap between "we have provenance" and "our users can independently verify everything."
-
 ### When to Use This
 
 | Use Case | This Project | Alternatives |
 | ---------- | -------------- | -------------- |
-| **Binary releases** (CLI tools, compiled artifacts) | ✅ Ideal — full provenance + user verification script | slsa-github-generator alone (no consumer tooling) |
+| **Binary releases** (CLI tools, compiled artifacts) | ✅ Ideal — full provenance + user verification script (your ecosystem may already provide ad-hoc tools) | slsa-github-generator alone (no consumer tooling) |
 | **Container images** | ⚠️ Partial — use for source verification; container signing needs additional setup | sigstore/cosign directly |
 | **Go module libraries** | ⚠️ Consider — Go's checksum database provides integrity; this adds provenance + SBOM | go.sum + proxy may suffice |
 | **Multi-language monorepos** | ✅ Works — language-agnostic source packaging | Manual integration of multiple tools |
