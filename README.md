@@ -11,15 +11,23 @@ Complete SLSA Level 3 release workflows with consumer verification tooling and L
 
 ## Why This Project?
 
+The SLSA ecosystem provides excellent tools for *producing* secure releases: [slsa-github-generator](https://github.com/slsa-framework/slsa-github-generator) creates provenance, [cosign](https://github.com/sigstore/cosign) signs artifacts, [slsa-verifier](https://github.com/slsa-framework/slsa-verifier) validates them. But then this happens:
+
+> "I see you have `.intoto.jsonl` files. How do I verify your release?"
+> 
+> — Every second GitHub issue after you ship provenance
+
+**The gap:** You've secured the *build*, but your users still need to learn four CLI tools, figure out which files to check and in what order, construct verification commands from scattered docs, and provide their own audit trails for compliance teams.
+
+**This project closes the loop** with complete SLSA Build Track Level 3 workflows that include:
+- **Consumer verification tooling** — One hardened script (`verify-release.sh`) that checks everything, so your users can actually *use* the security you deployed.
+- **Verification Summary Attestations** — Signed proof of verification for audit trails
+- **Reproducibility checks** — Hermetic container rebuilds to validate determinism
+- **Level 4 preparation** — Evidence collection before the spec finalizes
+
+All built on the standard SLSA stack (provenance from slsa-github-generator, signatures via Cosign/Rekor, SBOM in CycloneDX format, GitHub attestations).
+
 > **SLSA v1.2 Note:** This project implements **SLSA Build Track Level 3** requirements. The SLSA v1.2 specification defines separate Build Track and Source Track levels. While this workflow operates on GitHub and benefits from GitHub's source control features, it focuses on Build Track compliance and does not explicitly claim Source Track levels.
-
-The SLSA ecosystem provides excellent building blocks — [slsa-github-generator](https://github.com/slsa-framework/slsa-github-generator) for provenance, [cosign](https://github.com/sigstore/cosign) for signing, [slsa-verifier](https://github.com/slsa-framework/slsa-verifier) for validation. But achieving 
-
-This project bridges the gap between "we have provenance" and "our users can independently verify everything", achieving *complete* SLSA compliance integrating these pieces into a cohesive workflow that handles:
-- **Deterministic source packaging** — reproducible archives with stable timestamps
-- **Consumer verification** — downloadable script your users can run locally
-- **Verification Summary Attestations (VSA)** — signed policy results for audit trails
-- **Level 4 preparation** — reproducibility evidence before the spec is finalized
 
 ### When to Use This
 
