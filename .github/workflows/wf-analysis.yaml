@@ -64,7 +64,6 @@ jobs:
       #ort_config_source: ".github/ort" # optional subdirectory in the policy repository to use. If you have an .ort.yml put it there
       #ort_config_target: "~/.ort/config" # optional target directory to stage the policy configuration to, defaults to ~/.ort/config, because that's where ORT looks for it
       ort_fail_on: "violations"   # fail mode: violations|issues|never
-      ort_cli_args: "-P ort.analyzer.enabledPackageManagers=GoMod"
 
   Governance:
     uses: bytemare/workflows/.github/workflows/governance.yaml@fa650be4f12444abac033b066e0870505e1745c7
