@@ -726,13 +726,15 @@ jobs:
       - name: Upload VSA to release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          TARGET_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          echo "Uploading VSA files to release ${{github.ref_name }}..."
-          gh release upload "${{ github.ref_name }}" \
+          echo "Uploading VSA files to release ${RELEASE_TAG}..."
+          gh release upload "${RELEASE_TAG}" \
             verification-summary.attestation.json \
             verification-summary.attestation.json.bundle \
-            --repo "${{ github.repository }}" \
+            --repo "${TARGET_REPO}" \
             --clobber
 
       - name: Install Cosign for verification
@@ -742,7 +744,6 @@ jobs:
         run: |
           set -euo pipefail
           echo "Installing cosign ${COSIGN_VERSION} for VSA verification..."
-          COSIGN_VERSION_CLEAN="${COSIGN_VERSION#v}"
           curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
             --proto '=https' --proto-redir '=https' --max-redirs 1 \
             -o cosign-linux-amd64 \
@@ -766,15 +767,18 @@ jobs:
         env:
           COSIGN_EXPERIMENTAL: 1
           GH_TOKEN: ${{ github.token }}
+          TARGET_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          SIGNER_REPO: ${{ inputs.workflow_repo }}
         run: |
           set -euo pipefail
           echo "Verifying uploaded VSA with retry logic..."
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
             if ./slsa-workflow/verify-release.sh \
-                --repo "${{ github.repository }}" \
-                --tag "${{ github.ref_name }}" \
+                --repo "${TARGET_REPO}" \
+                --tag "${RELEASE_TAG}" \
                 --mode vsa \
-                --signer-repo "${{ inputs.workflow_repo }}"; then
+                --signer-repo "${SIGNER_REPO}"; then
               echo "VSA verification succeeded"
               exit 0
             fi

@@ -575,7 +575,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Installing cosign ${COSIGN_VERSION}..."
-          COSIGN_VERSION_CLEAN="${COSIGN_VERSION#v}"
+
           curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
             --proto '=https' --proto-redir '=https' --max-redirs 1 \
             -o cosign-linux-amd64 \
