@@ -14,7 +14,7 @@ Complete SLSA Level 3 release workflows with consumer verification tooling and L
 The SLSA ecosystem provides excellent tools for *producing* secure releases: [slsa-github-generator](https://github.com/slsa-framework/slsa-github-generator) creates provenance, [cosign](https://github.com/sigstore/cosign) signs artifacts, [slsa-verifier](https://github.com/slsa-framework/slsa-verifier) validates them. But then this happens:
 
 > "I see you have `.intoto.jsonl` files. How do I verify your release?"
-> 
+>
 > — Every second GitHub issue after you ship provenance
 
 **The gap:** You've secured the *build*, but your users still need to learn four CLI tools, figure out which files to check and in what order, construct verification commands from scattered docs, and provide their own audit trails for compliance teams.
