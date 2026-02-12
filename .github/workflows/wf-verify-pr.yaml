@@ -42,7 +42,7 @@ jobs:
     needs: get-latest-release
     if: ${{ github.event_name == 'pull_request' }}
     permissions:
-      contents: write
+      contents: read
       id-token: write
     uses: ./.github/workflows/verify.yaml
     with:

@@ -29,7 +29,7 @@ on:
         required: false
         default: full
       emit_vsa:
-        description: 'Emit a Verification Summary Attestation during full mode'
+        description: 'Emit a Verification Summary Attestation during full mode (outputs as workflow artifact)'
         type: boolean
         required: false
         default: false
@@ -50,28 +50,6 @@ on:
         description: 'Policy URI to embed when emitting a VSA'
         type: string
         required: false
-      upload_to_release:
-        description: 'Upload VSA files to GitHub release (requires contents: write permission)'
-        type: boolean
-        required: false
-        default: false
-      verify_vsa_after_upload:
-        description: 'Verify uploaded VSA with retry logic after upload'
-        type: boolean
-        required: false
-        default: false
-      cosign_version:
-        description: 'Cosign version override (default: from tool-versions.json)'
-        type: string
-        required: false
-      cosign_sha256:
-        description: 'SHA-256 override for cosign (default: from tool-versions.json)'
-        type: string
-        required: false
-      slsa_verifier_version:
-        description: 'slsa-verifier version override (default: from tool-versions.json)'
-        type: string
-        required: false
       workflow_repo:
         description: >-
           Reusable workflow repository (owner/repo) to fetch helper scripts. This is only useful for
@@ -85,10 +63,6 @@ on:
           same ref used in the caller's uses: statement to keep scripts pinned.
         type: string
         required: true
-      builder_image:
-        description: 'Builder image override (default: from tool-versions.json)'
-        type: string
-        required: false
 
 jobs:
 
@@ -119,6 +93,8 @@ jobs:
           INPUT_WORKFLOW_REPO: ${{ inputs.workflow_repo }}
           INPUT_REPO: ${{ inputs.repo }}
           INPUT_TAG: ${{ inputs.tag }}
+          INPUT_MODE: ${{ inputs.mode }}
+          INPUT_EMIT_VSA: ${{ inputs.emit_vsa }}
         run: |
           if [[ -z "$INPUT_WORKFLOW_REF" ]]; then
             echo "::error title=Missing Required Input::workflow_ref is required. Set it to the same ref used in uses: ...@<ref>"
@@ -131,6 +107,38 @@ jobs:
           if [[ -z "$INPUT_TAG" ]]; then
             echo "::error title=Missing Required Input::tag is required"
             exit 1
+          fi
+          
+          # Validate repo format (owner/name)
+          if [[ ! "$INPUT_REPO" =~ ^[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+$ ]]; then
+            echo "::error title=Invalid Input::repo must be in owner/name format (alphanumeric, underscore, hyphen, dot allowed)"
+            exit 1
+          fi
+          
+          # Validate tag format (warn if not semver, but allow)
+          if [[ ! "$INPUT_TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$ ]]; then
+            echo "::warning title=Tag Format::Tag '$INPUT_TAG' does not follow semantic versioning (v?X.Y.Z). This may cause issues."
+          fi
+          
+          # Validate mode values
+          IFS=',' read -ra modes <<< "$INPUT_MODE"
+          for mode in "${modes[@]}"; do
+            mode=$(echo "$mode" | xargs)  # trim whitespace
+            case "$mode" in
+              quick|full|reproduce|vsa) : ;;
+              *) 
+                echo "::error title=Invalid Mode::Invalid mode '$mode'. Allowed: quick, full, reproduce, vsa"
+                exit 1
+                ;;
+            esac
+          done
+          
+          # Validate emit_vsa consistency
+          if [[ "$INPUT_EMIT_VSA" == "true" ]]; then
+            if [[ ! "$INPUT_MODE" =~ (^|,)full(,|$) ]]; then
+              echo "::error title=Invalid Configuration::emit_vsa requires mode to include 'full' for proper verification"
+              exit 1
+            fi
           fi
           
           # Export validated values for use in checkout
@@ -162,11 +170,6 @@ jobs:
 
       - name: Load and resolve versions
         id: resolve
-        env:
-          INPUT_COSIGN_VERSION: ${{ inputs.cosign_version }}
-          INPUT_COSIGN_SHA256: ${{ inputs.cosign_sha256 }}
-          INPUT_SLSA_VERIFIER_VERSION: ${{ inputs.slsa_verifier_version }}
-          INPUT_BUILDER_IMAGE: ${{ inputs.builder_image }}
         run: |
           set -euo pipefail
           CONFIG=".github/tool-versions.json"
@@ -186,20 +189,18 @@ jobs:
           fi
           echo "" >&2
 
-          cosign_version="${INPUT_COSIGN_VERSION:-$(jq -r '.tools.cosign.version' "$CONFIG")}"
-          cosign_sha256="${INPUT_COSIGN_SHA256:-$(jq -r '.tools.cosign.sha256' "$CONFIG")}"
-          slsa_verifier_version="${INPUT_SLSA_VERIFIER_VERSION:-$(jq -r '.tools["slsa-verifier"].version' "$CONFIG")}"
+          # Load all versions from tool-versions.json
+          cosign_version=$(jq -r '.tools.cosign.version' "$CONFIG")
+          cosign_sha256=$(jq -r '.tools.cosign.sha256' "$CONFIG")
+          slsa_verifier_version=$(jq -r '.tools["slsa-verifier"].version' "$CONFIG")
           gh_version=$(jq -r '.tools.gh.version' "$CONFIG")
           gh_sha256=$(jq -r '.tools.gh.sha256' "$CONFIG")
 
-          if [[ -n "${INPUT_BUILDER_IMAGE:-}" ]]; then
-            builder_image="${INPUT_BUILDER_IMAGE}"
-          else
-            img=$(jq -r '.tools["builder-image"].image' "$CONFIG")
-            tag=$(jq -r '.tools["builder-image"].tag' "$CONFIG")
-            digest=$(jq -r '.tools["builder-image"].digest' "$CONFIG")
-            builder_image="${img}:${tag}@${digest}"
-          fi
+          # Build builder_image from components
+          img=$(jq -r '.tools["builder-image"].image' "$CONFIG")
+          tag=$(jq -r '.tools["builder-image"].tag' "$CONFIG")
+          digest=$(jq -r '.tools["builder-image"].digest' "$CONFIG")
+          builder_image="${img}:${tag}@${digest}"
 
           {
             echo "cosign_version=${cosign_version}"
@@ -218,7 +219,7 @@ jobs:
   # ===============================================================
   # Run verification modes
   # ===============================================================
-  verify:
+  run_verification:
     name:  Run verification modes
     needs: load_versions
     runs-on: ubuntu-latest
@@ -227,13 +228,12 @@ jobs:
     # - Download and verify release artifacts: 2-5 minutes  
     # - SLSA provenance verification: 1-3 minutes
     # - Reproduce mode with Docker builds: 10-20 minutes
-    # - VSA generation and signing: 1-2 minutes
+    # - VSA generation: 1-2 minutes
     # - Buffer for GitHub Actions infrastructure delays: 5 minutes
     # Total: 30 minutes provides adequate headroom for all modes
     timeout-minutes: 30
     permissions:
-      contents: write
-      id-token: write
+      contents: read
     steps:
       - name: Harden runner
         uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76
@@ -524,81 +524,11 @@ jobs:
             exit 1
           fi
 
-      - name: Sign emitted VSA
+      - name: Upload unsigned VSA
         if: ${{ inputs.emit_vsa }}
-        env:
-          COSIGN_EXPERIMENTAL: 1
-        run: |
-          set -euo pipefail
-          if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]]; then
-            echo "emit_vsa requires id-token: write permissions" >&2
-            exit 1
-          fi
-          rm -f verification-summary.attestation.json.bundle
-          cosign sign-blob --yes --bundle verification-summary.attestation.json.bundle verification-summary.attestation.json
-
-      - name: Upload VSA to release
-        if: ${{ inputs.emit_vsa && inputs.upload_to_release }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.tag }}
-          TARGET_REPO: ${{ inputs.repo }}
-          GH_VERSION: ${{ needs.load_versions.outputs.gh_version }}
-          GH_SHA256: ${{ needs.load_versions.outputs.gh_sha256 }}
-        run: |
-          set -euo pipefail
-          
-          # Install gh CLI if not present
-          if ! command -v gh &> /dev/null; then
-            echo "Installing gh CLI..."
-            GH_VERSION_CLEAN="${GH_VERSION#v}"
-            curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors \
-              --proto '=https' --proto-redir '=https' --max-redirs 1 \
-              -o gh.tar.gz "https://github.com/cli/cli/releases/download/${GH_VERSION}/gh_${GH_VERSION_CLEAN}_linux_amd64.tar.gz"
-            echo "${GH_SHA256}  gh.tar.gz" | sha256sum -c -
-            tar -xzf gh.tar.gz
-            install -m 0755 "gh_${GH_VERSION_CLEAN}_linux_amd64/bin/gh" /usr/local/bin/gh
-          fi
-          
-          echo "Uploading VSA files to release ${RELEASE_TAG}..."
-          gh release upload "$RELEASE_TAG" \
-            verification-summary.attestation.json \
-            verification-summary.attestation.json.bundle \
-            --repo "$TARGET_REPO" \
-            --clobber
-
-      - name: Verify uploaded VSA
-        if: ${{ inputs.verify_vsa_after_upload }}
-        env:
-          COSIGN_EXPERIMENTAL: 1
-          GH_TOKEN: ${{ github.token }}
-          TARGET_REPO: ${{ inputs.repo }}
-          RELEASE_TAG: ${{ inputs.tag }}
-          WORKFLOW_REPO: ${{ inputs.workflow_repo }}
-        run: |
-          set -euo pipefail
-          echo "Verifying uploaded VSA with retry logic..."
-          for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            if ./slsa-workflow/verify-release.sh \
-                --repo "$TARGET_REPO" \
-                --tag "$RELEASE_TAG" \
-                --mode vsa \
-                --signer-repo "$WORKFLOW_REPO"; then
-              echo "VSA verification succeeded"
-              exit 0
-            fi
-            echo "VSA not available yet (attempt ${attempt}/10); retrying in 10s..." >&2
-            sleep 10
-          done
-          echo "::error title=VSA Verification Failed::VSA verification failed after 10 attempts (100s total)" >&2
-          exit 1
-
-      - name: Upload VSA artifact
-        if: ${{ inputs.emit_vsa && !inputs.upload_to_release }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: vsa-${{ needs.load_versions.outputs.artifact_tag }}
+          name: vsa-unsigned-${{ needs.load_versions.outputs.artifact_tag }}
           if-no-files-found: error
-          path: |
-            verification-summary.attestation.json
-            verification-summary.attestation.json.bundle
+          retention-days: 1
+          path: verification-summary.attestation.json
