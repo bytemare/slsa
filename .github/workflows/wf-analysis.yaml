@@ -27,7 +27,7 @@ permissions: {}
 
 jobs:
   Lint:
-    uses: bytemare/workflows/.github/workflows/lint.yaml@d5a06bc8d9820c7b603cfcd3b69821f84eedd23c
+    uses: bytemare/workflows/.github/workflows/lint.yaml@fa650be4f12444abac033b066e0870505e1745c7
     permissions:
       contents: read
       packages: read
@@ -41,7 +41,7 @@ jobs:
       super-linter-rules-path: .github
 
   Licenses:
-    uses: bytemare/workflows/.github/workflows/license-check.yaml@d5a06bc8d9820c7b603cfcd3b69821f84eedd23c
+    uses: bytemare/workflows/.github/workflows/license-check.yaml@fa650be4f12444abac033b066e0870505e1745c7
     permissions:
       contents: write
       pull-requests: write
@@ -67,7 +67,7 @@ jobs:
       ort_cli_args: "-P ort.analyzer.enabledPackageManagers=GoMod"
 
   Governance:
-    uses: bytemare/workflows/.github/workflows/governance.yaml@d5a06bc8d9820c7b603cfcd3b69821f84eedd23c
+    uses: bytemare/workflows/.github/workflows/governance.yaml@fa650be4f12444abac033b066e0870505e1745c7
     permissions:
       contents: read
       security-events: write
@@ -97,7 +97,7 @@ jobs:
       scorecard: ${{ secrets.SCORECARD_TOKEN }}
 
   SAST:
-    uses: bytemare/workflows/.github/workflows/sast.yaml@d5a06bc8d9820c7b603cfcd3b69821f84eedd23c
+    uses: bytemare/workflows/.github/workflows/sast.yaml@fa650be4f12444abac033b066e0870505e1745c7
     permissions:
       contents: read
       security-events: write
