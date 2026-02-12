@@ -9,82 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 For releases prior to this changelog, see [GitHub Releases](https://github.com/bytemare/ecc/releases).
 
-## v0.4.0 - 12/2/2026
+## v0.3.0 - 12/2/2026
 
 ### Changed
-- **BREAKING**: Removed all tool version override inputs from both `slsa.yaml` and `verify.yaml`
-  - Removed: `cosign_version`, `cosign_sha256`, `gh_version`, `gh_sha256`, `jq_version`, `jq_sha256`, `slsa_verifier_version`, `cdxgen_version`, `builder_image`
-  - All tool versions now exclusively sourced from `.github/tool-versions.json`
-  - Enforces centralized security control and prevents override bypass attacks
+- **BREAKING**: Removed all tool version override inputs — all versions now sourced from `.github/tool-versions.json`
+  - Enforces centralized security control and prevents bypass attacks
   - Simplifies workflow API from 15+ inputs to 6 core inputs
-- **BREAKING**: Removed VSA upload functionality from `verify.yaml`
-  - Removed inputs: `upload_to_release`, `verify_vsa_after_upload`
-  - VSA upload now handled exclusively by `slsa.yaml` for integrated release workflows
-  - `verify.yaml` now read-only (contents: read) for external consumers
-  - External verifiers emit VSA as workflow artifact only
-- **verify.yaml** workflow restructured for least-privilege permissions
-  - Split into conditional jobs: `run_verification` (read-only), `emit_vsa_artifact` (id-token: write)
-  - `run_verification` downgraded to `contents: read` (was: write + id-token: write permissions)
-  - VSA signing moved to separate `emit_vsa_artifact` job with minimal permissions
-  - Enables truly read-only verification for external consumers
-- **slsa.yaml** now handles VSA upload independently
-  - New `upload_vsa_to_release` job downloads already-signed VSA artifact from verification workflow
-  - Uploads signed VSA to GitHub release (no re-signing - verify.yaml signs it once)
-  - Includes retry verification logic (10 attempts, 100s total) for CDN propagation
-  - Clear separation: verify.yaml = verification + signing, slsa.yaml = upload only
+- **BREAKING**: Restructured VSA workflow separation for least-privilege
+  - `verify.yaml` is now fully read-only (`contents: read` only), emits unsigned VSA as artifact
+  - `slsa.yaml` signs and uploads VSA with proper permissions (`id-token: write` + `contents: write`)
+  - External consumers can retrieve unsigned artifacts for their own signing
+- **BREAKING**: SBOM generation switched to container-based approach (cdxgen via Docker)
+  - Eliminates npm registry from egress policy
+  - Uses digest-pinned `ghcr.io/cyclonedx/cdxgen` container
+- Reproduce mode now uses hermetic execution with `--network none` container isolation
+  - Downloads and validation happen on host before mounting read-only into container
+  - Enables use of minimal images (Alpine, Chainguard)
+- VSA verification retry window increased from 30s to 100s for CDN propagation
 
 ### Added
-- Comprehensive input validation in both workflows
-  - `verify.yaml`: Validates repo format (owner/name), mode values (quick/full/reproduce/vsa), emit_vsa consistency
-  - `slsa.yaml`: Validates packaging_language and sbom_language (auto/go/generic)
-  - Warnings for non-semver tags (still allowed)
-  - Fail-fast with clear error messages for invalid inputs
-- Docker image caching removed (caused disk space issues on GitHub Actions runners)
-  - Builder and cdxgen images now pulled fresh each run (~30-60s overhead)
-  - Simpler than managing /tmp space limits and tar files
+- Comprehensive input validation with fail-fast error messages
+- Debug logging with GitHub Actions collapsible groups
 
 ### Security
 - Enforced least-privilege permissions across all workflows
-  - External consumers of `verify.yaml` now require only `contents: read`
-  - VSA upload restricted to `slsa.yaml` which already has `contents: write` for releases
-  - Tool version tampering prevented by removing all override mechanisms
-- Input validation prevents injection attacks and silent failures
-  - Strict regex for repo format, allowed-list for mode/language values
-  - Comprehensive validation before any sensitive operations
-
-## v0.3.0 - 11/2/2026
-
-### Added
-- Conditional DEBUG logging with GitHub Actions collapsible groups
-- Input validation for verifier_metadata to prevent injection attacks
-- Required/optional file handling in download functions with proper error reporting
-
-### Changed
-- **BREAKING**: Switched cdxgen to container-based approach (docker required)
-  - Uses digest-pinned ghcr.io/cyclonedx/cdxgen container
-  - Eliminates npm registry from egress policy
-  - SBOM generation now runs in dedicated job with docker access
-  - Maintains full multi-language SBOM support
-- **Reproduce mode now uses hermetic execution with network isolation**
-  - Container runs with `--network none` flag for zero network access
-  - All downloads and validation happen on host before container execution
-  - Repository and artifacts mounted as read-only volumes
-  - Eliminates curl/wget/ca-certificates requirement in builder images
-  - Matches security model of CI package_source job (egress-policy: block)
-  - Enables use of minimal images like golang:1.25-alpine or Chainguard
-- gh CLI installation now uses dynamic version from tool-versions.json (previously hardcoded v2.40.1)
-- VSA verification retry window increased from 30s to 100s to handle CDN propagation delays
-- PR verification workflow now dynamically discovers latest release
-
-### Fixed
-- Silent downloads now properly detected and reported
-
-### Removed
-- Unused load-tool-versions composite action
-
-### Security
-- Eliminated npm registry access in SBOM generation (pure container-based approach)
-- Added regex validation for verifier_metadata input
+- Added input validation to prevent injection attacks (regex for repo format, allowlist for mode/language values)
 
 ## v0.2.0 - 8/2/2026
 
