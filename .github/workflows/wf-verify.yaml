@@ -35,7 +35,6 @@ jobs:
     name: Verify release
     permissions:
       contents: read
-      id-token: write
     uses: ./.github/workflows/verify.yaml
     with:
       repo: ${{ github.repository }}
