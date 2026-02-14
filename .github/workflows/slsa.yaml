@@ -343,6 +343,7 @@ jobs:
             github.com:443
             ghcr.io:443
             pkg-containers.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
 
       - name: Download packaged source
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
