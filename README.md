@@ -203,7 +203,7 @@ You can use the following snippet in your repo to inform your consumers of the r
 > ## Release Integrity (SLSA Level 3)
 > Releases are built with the reusable [bytemare/slsa](https://github.com/bytemare/slsa) workflow and ship the evidence required for SLSA Level 3 compliance:
 >
-> - 📦 Artifacts are uploaded to the release page, and include the deterministic source archive plus subjects.sha256, signed SBOM (sbom.cdx.json), GitHub provenance (*.intoto.jsonl), a reproducibility report (verification.json), and a signed Verification Summary Attestation (verification-summary.attestation.json[.bundle]).
+> - 📦 Artifacts are uploaded to the release page, and include the deterministic source archive, subjects.sha256, signed SBOM (sbom.cdx.json), GitHub provenance (*.intoto.jsonl), a reproducibility report (verification.json), and a signed Verification Summary Attestation (verification-summary.attestation.json[.bundle]).
 > - ✍️ All artifacts are signed using [Sigstore](https://sigstore.dev) with transparency via [Rekor](https://rekor.sigstore.dev).
 > - ✅ Verification (or see the latest docs at [bytemare/slsa](https://github.com/bytemare/slsa)):
 > ```shell

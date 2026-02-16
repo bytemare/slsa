@@ -58,7 +58,7 @@ These guarantees are what the verification and reproduction steps validate. The 
 | File                                                  | Purpose                                                                  | SLSA Alignment                                                    |
 |-------------------------------------------------------|--------------------------------------------------------------------------|-------------------------------------------------------------------|
 | `<repo>-<tag>.tar.gz`                                 | Deterministic source archive (git archive + gzip `-n`)                   | L3 (primary subject); deterministic evidence for future levels    |
-| `subjects.sha256`                                     | SLSA subjects list (2 lines: archive + checksums.txt)                    | L3 (required input to provenance generator)                       |
+| `subjects.sha256`                                     | SLSA subjects list (3 lines: archive + checksums.txt + package-source.sh) | L3 (required input to provenance generator)                       |
 | `checksums.txt`                                       | Aggregated SHA-256 checksums (convenience verification)                  | L3 (secondary subject); structured manifest for higher-level use  |
 | `<repo>-<tag>.tar.gz.{sig,cert,bundle}`               | Cosign signatures for tarball                                            | L3 (authenticity via Sigstore transparency)                       |
 | `checksums.txt.{sig,cert,bundle}`                     | Cosign signatures for checksums manifest                                 | L3 (signed integrity manifest)                                    |
@@ -70,7 +70,7 @@ These guarantees are what the verification and reproduction steps validate. The 
 | `build.env`                                           | Environment snapshot (tools, versions, script hash)                      | Supplemental environment fingerprint (future Level 4 readiness)   |
 | `verification.json`                                   | Machine-readable reproducibility summary                                 | Supplemental policy aid (future Level 4 readiness)                |
 | `verification-summary.attestation.json` (+ `.bundle`) | Verification Summary Attestation documenting verification policy results | Supplemental signed verification summary for consumers            |
-| `scripts/package-source.sh`                           | Canonical packaging recipe                                               | Supplemental reproducible build script (future Level 4 readiness) |
+| `package-source.sh`                                   | Canonical packaging recipe (third SLSA subject)                          | L3 (script integrity verification) + supplemental reproducibility |
 
 #### Extended Artifacts (Optional)
 
@@ -211,7 +211,7 @@ This quick manual verification only checks the tarball. For complete verificatio
 
 **1. Download artifacts**
 ```bash
-gh release download <tag> --repo <owner>/<repo> -p '*.tar.gz' -p '*.bundle' -p 'subjects.sha256' -p 'checksums.txt'
+gh release download <tag> --repo <owner>/<repo> -p '*.tar.gz' -p '*.bundle' -p 'subjects.sha256' -p 'checksums.txt' -p 'package-source.sh'
 ```
 
 **2. Verify the tarball checksum**
@@ -251,9 +251,9 @@ cosign verify-blob \
 
 #### 1. Verify SLSA Subjects Structure
 
-Confirm exactly 2 subjects (archive + checksums.txt):
+Confirm exactly 3 subjects (archive + checksums.txt + package-source.sh):
 ```bash
-wc -l subjects.sha256  # Should output: 2
+wc -l subjects.sha256  # Should output: 3
 ```
 
 #### 2. Verify Primary Archive Digest
@@ -267,11 +267,23 @@ sha256sum -- "${ART}" | diff -u - <(head -n1 subjects.sha256) \
 #### 3. Verify Checksums Manifest Digest
 
 ```bash
-sha256sum -- checksums.txt | diff -u - <(tail -n1 subjects.sha256) \
+sha256sum -- checksums.txt | diff -u - <(sed -n '2p' subjects.sha256) \
   || echo "❌ checksums.txt digest mismatch" >&2
 ```
 
-#### 4. Verify Per-File Content (Deep Check)
+#### 4. Verify Packaging Script Integrity
+
+```bash
+sha256sum -- package-source.sh | diff -u - <(sed -n '3p' subjects.sha256) \
+  || echo "❌ package-source.sh digest mismatch" >&2
+```
+
+This ensures:
+- The script included in the release is authentic
+- Cross-verification against repository version (when running reproduce mode)
+- Defense-in-depth: script integrity validated before execution
+
+#### 5. Verify Per-File Content (Deep Check)
 
 First, download the manifest file:
 ```bash
@@ -298,7 +310,7 @@ echo "✅ Per-file content verified"
 cd "${MANIFEST_DIR}"
 ```
 
-#### 5. Verify Signatures (Alternative Methods)
+#### 6. Verify Signatures (Alternative Methods)
 
 **Option A: Bundle files (recommended)**
 ```bash
@@ -323,7 +335,7 @@ cosign verify-blob \
   <file>
 ```
 
-#### 6. Inspect Certificate Claims (Implicit in Signature Verification)
+#### 7. Inspect Certificate Claims (Implicit in Signature Verification)
 
 When using Sigstore bundles (`.bundle`), the certificate is securely packaged alongside the signature. The `cosign verify-blob` command automatically validates the entire certificate chain against the public Sigstore transparency log (Rekor).
 
@@ -331,7 +343,7 @@ When using Sigstore bundles (`.bundle`), the certificate is securely packaged al
 
 **Note on `.cert` files:** You may notice `.cert` files attached to releases. Depending on the `cosign` version and flags used during signing, these files may be empty, contain a single certificate, or even be a bundle themselves. Attempting to manually parse them can be misleading. The authoritative source for verification is always the `.bundle` file.
 
-#### 7. Verify GitHub Attestations
+#### 8. Verify GitHub Attestations
 
 Download the tarball if not already present, then verify:
 ```bash
@@ -342,7 +354,7 @@ gh attestation verify --repo <owner>/<repo> "${ART}"
 
 **Note:** This verifies both SLSA provenance and SBOM attestations attached via GitHub's attestation API.
 
-#### 8. Verify SLSA Provenance File
+#### 9. Verify SLSA Provenance File
 
 Download the provenance file, which is a Sigstore bundle in JSON format.
 
@@ -374,7 +386,7 @@ jq -r '.dsseEnvelope.payload' "$PROV" | base64 -d | jq '.'
 
 This allows an auditor to manually confirm the build type, builder ID, and other critical details.
 
-#### 9. Verify Verification Summary Attestation
+#### 10. Verify Verification Summary Attestation
 
 ```bash
 gh release download <tag> --repo <owner>/<repo> -p 'verification-summary.attestation.json*'
@@ -397,7 +409,7 @@ jq -r '.predicate.policy.digest.sha256' verification-summary.attestation.json
 Push this digest through your own copy of the policy source to ensure it matches.
 Prefer automation? Run `./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode vsa` to execute the signed verification summary checks end-to-end.
 
-#### 10. Inspect SBOM
+#### 11. Inspect SBOM
 
 First, download the SBOM file:
 ```bash
@@ -413,7 +425,7 @@ jq '.components | length' sbom.cdx.json
 jq -r '.components[] | "\(.name)@\(.version)"' sbom.cdx.json | head -20
 ```
 
-#### 11. Check Reproducibility Report
+#### 12. Check Reproducibility Report
 
 First, download the verification report:
 ```bash

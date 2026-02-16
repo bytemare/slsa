@@ -36,11 +36,12 @@
 #
 # Produced artifacts (persisted in repo workspace):
 #   dist/<basename>.tar.gz        Reproducible source archive
-#   subjects.sha256 / .b64        Canonical digest plus base64 variant
+#   subjects.sha256 / .b64        Canonical digest plus base64 variant (3 subjects:
+#                                  archive, checksums.txt, and this script)
 #   manifest.files.sha256         Per-file content digests (content-addressed map)
 #   commit.metadata / .sha256     Core commit descriptors
 #   build.env / .sha256           Toolchain snapshot and script hash
-#   packaging-script.sha256       Integrity hash of this script itself
+#   checksums.txt                 Aggregated checksums (archive + script + manifests)
 #
 # Exit codes:
 #   0   Success
@@ -53,7 +54,7 @@
 #   - gzip -n -9: maximum compression and zeroed metadata (deterministic), slight CPU cost acceptable (single archive).
 #   - Dual determinism checks: internal self-check here plus external rebuild job in CI for SLSA L4 readiness evidence.
 #   - Per-file SHA-256 manifest retained (most useful for external verification) while other metadata (git tree, optional Go env) gated by EXTENDED_METADATA for lean defaults.
-#   - Keeping script hash in both packaging-script.sha256 and build.env provides redundancy for integrity.
+#   - Script hash stored in 3 locations for defense-in-depth: build.env (toolchain snapshot), checksums.txt (aggregated manifest), and subjects.sha256 (third SLSA subject).
 #
 # Security posture:
 #   - Aborts if working tree or index is dirty (prevents accidental inclusion of

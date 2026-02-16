@@ -49,8 +49,8 @@
 #
 # 1. CHECKSUM INTEGRITY
 #    - Verify SHA-256 checksums of source tarball against subjects.sha256
-#    - Verify SHA-256 checksums of checksums.txt against subjects.sha256
-#    - Verify SHA-256 checksums of package-source.sh against subjects.sha256 (if present)
+#    - Verify SHA-256 checksums of checksums.txt against subjects.sha256 (second subject)
+#    - Verify SHA-256 checksums of package-source.sh against subjects.sha256 (third subject)
 #    - All checksums must match to ensure artifact integrity
 #
 # 2. SIGNATURE VERIFICATION (Sigstore/Cosign)
@@ -85,6 +85,8 @@
 #    - Rebuild source tarball in hermetic container environment
 #    - Verify rebuilt artifact digest matches published artifact
 #    - Use exact builder image from build.env (if available)
+#    - Cross-verify package-source.sh: release asset vs repository tag
+#      (defense-in-depth integrity check to detect potential supply chain attacks)
 #
 # Policy Enforcement: ALL checks in the selected mode must pass. Any single
 # failure results in exit code 3 (EXIT_VERIFICATION_FAILED) and prevents VSA
