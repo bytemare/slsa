@@ -1260,12 +1260,12 @@ umask 022
 
 # Set up a minimal home directory for git config to avoid warnings/errors about unsafe repositories or missing config
 export HOME=/work
-mkdir -p "$HOME"
-: > "$HOME/.gitconfig"
-: > "$HOME/.gitconfig-system"
+mkdir -p \$HOME
+: > \$HOME/.gitconfig
+: > \$HOME/.gitconfig-system
 
-export GIT_CONFIG_GLOBAL="$HOME/.gitconfig"
-export GIT_CONFIG_SYSTEM="$HOME/.gitconfig-system"
+export GIT_CONFIG_GLOBAL=\$HOME/.gitconfig
+export GIT_CONFIG_SYSTEM=\$HOME/.gitconfig-system
 export GIT_CONFIG_NOSYSTEM=1
 export GIT_TERMINAL_PROMPT=0
 

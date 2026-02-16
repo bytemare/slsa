@@ -55,22 +55,22 @@ These guarantees are what the verification and reproduction steps validate. The 
 
 ### Core Artifacts (Always Present)
 
-| File                                                  | Purpose                                                                  | SLSA Alignment                                                    |
-|-------------------------------------------------------|--------------------------------------------------------------------------|-------------------------------------------------------------------|
-| `<repo>-<tag>.tar.gz`                                 | Deterministic source archive (git archive + gzip `-n`)                   | L3 (primary subject); deterministic evidence for future levels    |
+| File                                                  | Purpose                                                                   | SLSA Alignment                                                    |
+|-------------------------------------------------------|---------------------------------------------------------------------------|-------------------------------------------------------------------|
+| `<repo>-<tag>.tar.gz`                                 | Deterministic source archive (git archive + gzip `-n`)                    | L3 (primary subject); deterministic evidence for future levels    |
 | `subjects.sha256`                                     | SLSA subjects list (3 lines: archive + checksums.txt + package-source.sh) | L3 (required input to provenance generator)                       |
-| `checksums.txt`                                       | Aggregated SHA-256 checksums (convenience verification)                  | L3 (secondary subject); structured manifest for higher-level use  |
-| `<repo>-<tag>.tar.gz.{sig,cert,bundle}`               | Cosign signatures for tarball                                            | L3 (authenticity via Sigstore transparency)                       |
-| `checksums.txt.{sig,cert,bundle}`                     | Cosign signatures for checksums manifest                                 | L3 (signed integrity manifest)                                    |
-| `sbom.cdx.json`                                       | CycloneDX SBOM (via cdxgen container, gh-gomod for Go modules)           | L3 (attested via GitHub attestations)                             |
-| `sbom.cdx.json.{sig,cert,bundle}`                     | Cosign signatures for SBOM                                               | L3 (signed dependency manifest)                                   |
-| `*.intoto.jsonl`                                      | SLSA Level 3 provenance attestation                                      | L3 (required non-falsifiable provenance)                          |
-| `manifest.files.sha256`                               | Per-file SHA-256 (content-addressed mapping)                             | Supplemental reproducibility aid (future Level 4 readiness)       |
-| `commit.metadata`                                     | Commit lineage (hash, tree, parents, author, subject)                    | Supplemental audit trail (future Level 4 readiness)               |
-| `build.env`                                           | Environment snapshot (tools, versions, script hash)                      | Supplemental environment fingerprint (future Level 4 readiness)   |
-| `verification.json`                                   | Machine-readable reproducibility summary                                 | Supplemental policy aid (future Level 4 readiness)                |
-| `verification-summary.attestation.json` (+ `.bundle`) | Verification Summary Attestation documenting verification policy results | Supplemental signed verification summary for consumers            |
-| `package-source.sh`                                   | Canonical packaging recipe (third SLSA subject)                          | L3 (script integrity verification) + supplemental reproducibility |
+| `checksums.txt`                                       | Aggregated SHA-256 checksums (convenience verification)                   | L3 (secondary subject); structured manifest for higher-level use  |
+| `<repo>-<tag>.tar.gz.{sig,cert,bundle}`               | Cosign signatures for tarball                                             | L3 (authenticity via Sigstore transparency)                       |
+| `checksums.txt.{sig,cert,bundle}`                     | Cosign signatures for checksums manifest                                  | L3 (signed integrity manifest)                                    |
+| `sbom.cdx.json`                                       | CycloneDX SBOM (via cdxgen container, gh-gomod for Go modules)            | L3 (attested via GitHub attestations)                             |
+| `sbom.cdx.json.{sig,cert,bundle}`                     | Cosign signatures for SBOM                                                | L3 (signed dependency manifest)                                   |
+| `*.intoto.jsonl`                                      | SLSA Level 3 provenance attestation                                       | L3 (required non-falsifiable provenance)                          |
+| `manifest.files.sha256`                               | Per-file SHA-256 (content-addressed mapping)                              | Supplemental reproducibility aid (future Level 4 readiness)       |
+| `commit.metadata`                                     | Commit lineage (hash, tree, parents, author, subject)                     | Supplemental audit trail (future Level 4 readiness)               |
+| `build.env`                                           | Environment snapshot (tools, versions, script hash)                       | Supplemental environment fingerprint (future Level 4 readiness)   |
+| `verification.json`                                   | Machine-readable reproducibility summary                                  | Supplemental policy aid (future Level 4 readiness)                |
+| `verification-summary.attestation.json` (+ `.bundle`) | Verification Summary Attestation documenting verification policy results  | Supplemental signed verification summary for consumers            |
+| `package-source.sh`                                   | Canonical packaging recipe (third SLSA subject)                           | L3 (script integrity verification) + supplemental reproducibility |
 
 #### Extended Artifacts (Optional)
 

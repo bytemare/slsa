@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 For releases prior to this changelog, see [GitHub Releases](https://github.com/bytemare/ecc/releases).
 
-## v0.4.0 - 16/2/2026
+## v0.2.0 - 16/2/2026
 
 ### Changed
 - **BREAKING**: SLSA subjects structure changed from 2 to 3 subjects
@@ -39,7 +39,7 @@ For releases prior to this changelog, see [GitHub Releases](https://github.com/b
 - Suppressed tar future timestamp warnings with --warning=no-timestamp flag
 - Variable quoting in [[ ]] tests (shellcheck SC2027 compliance)
 
-## v0.3.0 - 12/2/2026
+## v0.1.2 - 12/2/2026
 
 ### Changed
 - **BREAKING**: Removed all tool version override inputs — all versions now sourced from `.github/tool-versions.json`
@@ -65,7 +65,7 @@ For releases prior to this changelog, see [GitHub Releases](https://github.com/b
 - Enforced least-privilege permissions across all workflows
 - Added input validation to prevent injection attacks (regex for repo format, allowlist for mode/language values)
 
-## v0.2.0 - 8/2/2026
+## v0.1.1 - 8/2/2026
 
 ### Added
 - Automatic verifier metadata computation in verification workflows
