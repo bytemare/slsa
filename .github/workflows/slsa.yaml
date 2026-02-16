@@ -411,6 +411,12 @@ jobs:
           # Move the SBOM to the expected location
           mv sbom-output/sbom.cdx.json sbom.cdx.json
           
+          # Validate SBOM was created and is not empty
+          if [[ ! -s sbom.cdx.json ]]; then
+            echo "[ERROR] SBOM file is missing or empty" >&2
+            exit 1
+          fi
+          
           echo "[INFO] SBOM generated successfully" >&2
 
       - name: Generate CycloneDX SBOM (Go modules)
