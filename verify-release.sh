@@ -1213,7 +1213,8 @@ run_repro_check() {
         --network none \
         --cap-drop=ALL \
         --security-opt=no-new-privileges \
-        --tmpfs /work:rw,nosuid,nodev,noexec \
+        --user "$(id -u):$(id -g)" \
+        --tmpfs /work:rw,nosuid,nodev,mode=700,uid="$(id -u)",gid="$(id -g)" \
         -v "$repo_tmp:/repo:ro" \
         -v "$artifact_tmp:/input/artifact.tar.gz:ro" \
         "${mount_args[@]}" -w /work \
