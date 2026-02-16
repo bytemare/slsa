@@ -21,8 +21,8 @@
 #   ./verify-release.sh --repo OWNER/REPO --tag TAG [--mode MODE]
 #
 # Arguments:
-#   --repo OWNER/REPO    Repository in format owner/repo (e.g., bytemare/workflows)
-#   --tag TAG            Release tag to verify (e.g., 0.0.4)
+#   --repo OWNER/REPO    Repository in format owner/repo (e.g., bytemare/slsa)
+#   --tag TAG            Release tag to verify (e.g., 0.2.0)
 #   --mode MODE          Verification mode: quick, full, or reproduce (default: quick)
 #
 # Modes:
@@ -49,7 +49,8 @@
 #
 # 1. CHECKSUM INTEGRITY
 #    - Verify SHA-256 checksums of source tarball against subjects.sha256
-#    - Verify SHA-256 checksums of checksums.txt against subjects.sha256
+#    - Verify SHA-256 checksums of checksums.txt against subjects.sha256 (second subject)
+#    - Verify SHA-256 checksums of package-source.sh against subjects.sha256 (third subject)
 #    - All checksums must match to ensure artifact integrity
 #
 # 2. SIGNATURE VERIFICATION (Sigstore/Cosign)
@@ -84,6 +85,8 @@
 #    - Rebuild source tarball in hermetic container environment
 #    - Verify rebuilt artifact digest matches published artifact
 #    - Use exact builder image from build.env (if available)
+#    - Cross-verify package-source.sh: release asset vs repository tag
+#      (defense-in-depth integrity check to detect potential supply chain attacks)
 #
 # Policy Enforcement: ALL checks in the selected mode must pass. Any single
 # failure results in exit code 3 (EXIT_VERIFICATION_FAILED) and prevents VSA
@@ -261,8 +264,8 @@ ${YELLOW}Usage:${NC}
   $0 --repo OWNER/REPO --tag TAG [--mode MODE]
 
 ${YELLOW}Required Arguments:${NC}
-  --repo OWNER/REPO    Repository in format owner/repo (e.g., bytemare/workflows)
-  --tag TAG            Release tag to verify (e.g., 0.0.4)
+  --repo OWNER/REPO    Repository in format owner/repo (e.g., bytemare/slsa)
+  --tag TAG            Release tag to verify (e.g., 0.2.0)
 
 ${YELLOW}Optional Arguments:${NC}
   --mode MODE          Verification mode (default: quick)
@@ -287,13 +290,13 @@ ${YELLOW}Optional Arguments:${NC}
   --help               Show this help message
 
 Examples:
-  $0 --repo bytemare/workflows --tag 0.0.4
-  $0 --repo bytemare/workflows --tag 0.0.4 --mode full
-  DEBUG=true $0 --repo bytemare/workflows --tag 0.0.4  # Enable debug logging (auto in CI)
-  $0 --repo bytemare/workflows --tag 0.0.4 --mode reproduce
-  $0 --repo bytemare/workflows --tag 0.0.4 --mode vsa
-  $0 --repo bytemare/workflows --tag 0.0.4 --mode full --emit-vsa my.vsa.json --verifier-id https://example.com/verifier
-  $0 --repo bytemare/workflows --tag 0.0.4 --mode full --signer-repo bytemare/slsa
+  $0 --repo bytemare/slsa --tag 0.2.0
+  $0 --repo bytemare/slsa --tag 0.2.0 --mode full
+  DEBUG=true $0 --repo bytemare/slsa --tag 0.2.0  # Enable debug logging (auto in CI)
+  $0 --repo bytemare/slsa --tag 0.2.0 --mode reproduce
+  $0 --repo bytemare/slsa --tag 0.2.0 --mode vsa
+  $0 --repo bytemare/slsa --tag 0.2.0 --mode full --emit-vsa my.vsa.json --verifier-id https://example.com/verifier
+  $0 --repo bytemare/slsa --tag 0.2.0 --mode full --signer-repo bytemare/slsa
 
 Note: VSA emission happens after all checks succeed to preserve a verifier/producer separation. A consumer or CI policy can trust the summary because it was generated post-release by the verification workflow, not during packaging.
 
@@ -708,10 +711,10 @@ verify_subjects() {
     verify_step "Verifying SLSA subjects structure"
     local subject_count
     subject_count=$(wc -l < subjects.sha256 | tr -d ' ')
-    if [[ "$subject_count" -eq 2 ]]; then
+    if [[ "$subject_count" -eq 3 ]]; then
         verify_ok
     else
-        verify_fail "Expected 2 subjects, found $subject_count"
+        verify_fail "Expected 3 subjects, found $subject_count"
         return 1
     fi
 
@@ -741,7 +744,7 @@ verify_checksums_manifest() {
     local computed_hash
     computed_hash=$(sha256sum -- checksums.txt | awk '{print $1}')
     local expected_hash
-    expected_hash=$(tail -n1 subjects.sha256 | awk '{print $1}')
+    expected_hash=$(sed -n '2p' subjects.sha256 | awk '{print $1}')
     if [[ "$computed_hash" == "$expected_hash" ]]; then
         verify_ok
     else
@@ -749,6 +752,30 @@ verify_checksums_manifest() {
         return 1
     fi
 
+    return 0
+}
+
+verify_packaging_script() {
+    verify_step "Verifying packaging script integrity"
+    
+    local script_file
+    script_file=$(find . -maxdepth 1 -name "package-source.sh" -type f -print -quit)
+    if [[ ! -f "$script_file" ]]; then
+        verify_fail "package-source.sh not found in release assets"
+        return 1
+    fi
+    
+    local computed_hash
+    computed_hash=$(sha256sum -- "$script_file" | awk '{print $1}')
+    local expected_hash
+    expected_hash=$(sed -n '3p' subjects.sha256 | awk '{print $1}')
+    if [[ "$computed_hash" == "$expected_hash" ]]; then
+        verify_ok
+    else
+        verify_fail "Packaging script checksum mismatch"
+        return 1
+    fi
+    
     return 0
 }
 
@@ -861,6 +888,7 @@ run_verification() {
     verify_subjects || exit_code=$EXIT_VERIFICATION_FAILED
     verify_tarball_checksum || exit_code=$EXIT_VERIFICATION_FAILED
     verify_checksums_manifest || exit_code=$EXIT_VERIFICATION_FAILED
+    verify_packaging_script || exit_code=$EXIT_VERIFICATION_FAILED
     verify_signatures || exit_code=$EXIT_VERIFICATION_FAILED
 
     if [[ "$MODE" == "full" ]]; then
@@ -1208,7 +1236,14 @@ run_repro_check() {
     fi
 
     # Run container with network isolation and mounted files
-    if ! docker run --rm --network none "${mount_args[@]}" -w /work \
+    if ! docker run \
+        --rm \
+        --network none \
+        --cap-drop=ALL \
+        --security-opt=no-new-privileges \
+        --user "$(id -u):$(id -g)" \
+        --tmpfs /work:rw,nosuid,nodev,mode=700,uid="$(id -u)",gid="$(id -g)" \
+        "${mount_args[@]}" -w /work \
         -e "GITHUB_SHA=$commit_sha" \
         -e "GITHUB_REPOSITORY=$REPO" \
         -e "GITHUB_REF_NAME=$TAG" \
@@ -1223,20 +1258,45 @@ run_repro_check() {
 set -euo pipefail
 umask 022
 
+# Set up a minimal home directory for git config to avoid warnings/errors about unsafe repositories or missing config
+export HOME=/work
+mkdir -p \$HOME
+: > \$HOME/.gitconfig
+: > \$HOME/.gitconfig-system
+
+export GIT_CONFIG_GLOBAL=\$HOME/.gitconfig
+export GIT_CONFIG_SYSTEM=\$HOME/.gitconfig-system
+export GIT_CONFIG_NOSYSTEM=1
+export GIT_TERMINAL_PROMPT=0
+
 step() { printf '\n--- %s ---\n' \"\$1\"; }
-info() { printf '% -50s' \"\$1...\"; }
+info() { printf '%-50s' \"\$1...\"; }
 ok() { echo ' OK'; }
 fail() {
     echo ' FAIL'
-    if [[ -n \"\${1:-}\" ]]; then echo \"  Error: \${1}\" >&2; fi
+    if [[ -n \${1:-} ]]; then echo \"  Error: \$1\" >&2; fi
     exit 1
+}
+testDirs() {
+    test -r /repo/.git/HEAD || {
+        echo 'Cannot read /repo mount' >&2
+        exit 1
+    }
+    test -w /work || {
+        echo 'Cannot write /work' >&2
+        exit 1
+    }
 }
 
 step 'Rebuilding artifact in hermetic container'
 
 # Copy repo to writable location (mounted read-only)
 info 'Preparing build environment'
-cp -a /repo /work/repo
+
+testDirs
+
+mkdir -p /work/repo
+( cd /repo && tar -cf - . ) | ( cd /work/repo && tar -xf - --no-same-owner --warning=no-timestamp )
 cd /work/repo
 # Fix git ownership issue when copying between containers/users
 git config --global --add safe.directory /work/repo
@@ -1244,11 +1304,23 @@ ok
 
 # Determine which packaging script to use
 PACKAGING_SCRIPT=''
-if [[ '$use_release_script' == 'true' ]]; then
+if [[ $use_release_script == 'true' ]]; then
     info 'Using packaging script from release assets'
     cp /input/package-source.sh /work/package-source.sh
     chmod +x /work/package-source.sh
     PACKAGING_SCRIPT='/work/package-source.sh'
+    
+    # Cross-verify: if repo also has the script, they must match
+    if [[ -f scripts/package-source.sh ]]; then
+        release_sha=\$(sha256sum /work/package-source.sh | awk '{print \$1}')
+        repo_sha=\$(sha256sum scripts/package-source.sh | awk '{print \$1}')
+        if [[ \$release_sha != \$repo_sha ]]; then
+            echo 'Script integrity violation: release asset differs from tagged repo' >&2
+            echo '  Release asset: '\$release_sha >&2
+            echo '  Repository:    '\$repo_sha >&2
+            fail 'This is a potential supply chain attack indicator.'
+        fi
+    fi
     ok
 elif [[ -f scripts/package-source.sh ]]; then
     info 'Using packaging script from repository'
@@ -1271,7 +1343,8 @@ ok
 # Compare rebuilt artifact against published
 info 'Calculating rebuilt artifact digest'
 rebuilt_path=\$(find dist -maxdepth 1 -name '*.tar.gz' -print -quit)
-if [[ -z \"\$rebuilt_path\" ]]; then
+if [[ -z \$rebuilt_path ]]; then
+    find dist -maxdepth 2 -type f -print >&2 || true
     fail 'Rebuilt tarball not found in dist/'
 fi
 rebuilt_digest=\$(sha256sum \"\$rebuilt_path\" | awk '{print \$1}')
@@ -1279,10 +1352,10 @@ ok
 
 info 'Comparing with published artifact'
 published_digest=\$(sha256sum /input/artifact.tar.gz | awk '{print \$1}')
-if [[ \"\$rebuilt_digest\" != \"\$published_digest\" ]]; then
+if [[ \$rebuilt_digest != \$published_digest ]]; then
     echo ' FAIL' >&2
-    echo \"  Published:  \$published_digest\" >&2
-    echo \"  Rebuilt:    \$rebuilt_digest\" >&2
+    echo '  Published:  '\$published_digest >&2
+    echo '  Rebuilt:    '\$rebuilt_digest >&2
     fail 'Digest mismatch - artifact is NOT reproducible'
 fi
 ok

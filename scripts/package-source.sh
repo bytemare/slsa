@@ -36,11 +36,12 @@
 #
 # Produced artifacts (persisted in repo workspace):
 #   dist/<basename>.tar.gz        Reproducible source archive
-#   subjects.sha256 / .b64        Canonical digest plus base64 variant
+#   subjects.sha256 / .b64        Canonical digest plus base64 variant (3 subjects:
+#                                  archive, checksums.txt, and this script)
 #   manifest.files.sha256         Per-file content digests (content-addressed map)
 #   commit.metadata / .sha256     Core commit descriptors
 #   build.env / .sha256           Toolchain snapshot and script hash
-#   packaging-script.sha256       Integrity hash of this script itself
+#   checksums.txt                 Aggregated checksums (archive + script + manifests)
 #
 # Exit codes:
 #   0   Success
@@ -53,7 +54,7 @@
 #   - gzip -n -9: maximum compression and zeroed metadata (deterministic), slight CPU cost acceptable (single archive).
 #   - Dual determinism checks: internal self-check here plus external rebuild job in CI for SLSA L4 readiness evidence.
 #   - Per-file SHA-256 manifest retained (most useful for external verification) while other metadata (git tree, optional Go env) gated by EXTENDED_METADATA for lean defaults.
-#   - Keeping script hash in both packaging-script.sha256 and build.env provides redundancy for integrity.
+#   - Script hash stored in 3 locations for defense-in-depth: build.env (toolchain snapshot), checksums.txt (aggregated manifest), and subjects.sha256 (third SLSA subject).
 #
 # Security posture:
 #   - Aborts if working tree or index is dirty (prevents accidental inclusion of
@@ -250,8 +251,12 @@ if ! git diff --quiet --ignore-submodules --exit-code || \
    ! git diff --quiet --cached --ignore-submodules --exit-code; then
   fail "$EXIT_GIT_ERROR" "Dirty worktree or index, aborting"
 fi
-# Use commit timestamp to seed deterministic tooling.
-SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_SHA")"
+# Deterministic timestamp anchor (commit time of the exact subject) to seed deterministic tooling.
+# Allow override if caller sets SOURCE_DATE_EPOCH explicitly.
+if [[ -z "${SOURCE_DATE_EPOCH:-}" ]]; then
+  SOURCE_DATE_EPOCH="$(git show -s --no-show-signature --format=%ct "$GITHUB_SHA")"
+fi
+[[ "${SOURCE_DATE_EPOCH}" =~ ^[0-9]+$ ]] || fail "$EXIT_GENERAL_ERROR" "SOURCE_DATE_EPOCH is not numeric"
 export SOURCE_DATE_EPOCH
 # Sanitize naming components using the sanitize function defined above.
 REPO_SAFE="$(sanitize "${GITHUB_REPOSITORY#*/}")"
@@ -299,12 +304,15 @@ echo '::endgroup::'
 
 echo '::group::Generate per-file manifest'
 log "Generating per-file content manifest"
-git ls-files -z | sort -z | while IFS= read -r -d '' f; do printf '%s  %s\n' "$(sha256_of "$f")" "$f"; done > manifest.files.sha256
+# LC_ALL=C is already set globally, but ensure it's used here for consistent sorting regardless of locale. Use null-delimited output to safely handle all filenames.
+git ls-files -z | LC_ALL=C sort -z | while IFS= read -r -d '' f; do
+  printf '%s  %s\n' "$(sha256_of "$f")" "$f"
+done > manifest.files.sha256
 echo '::endgroup::'
 
 echo '::group::Commit metadata'
 # Commit metadata snapshot (no separate .sha256 file as it's derivable from commit)
-git show -s --format='format:COMMIT %H%nTREE %T%nPARENT %P%nAUTHOR %an <%ae> %ad%nCOMMITTER %cn <%ce> %cd%nSUBJECT %s%n' "$GITHUB_SHA" > commit.metadata
+git show -s --no-show-signature --date=iso-strict --format='format:COMMIT %H%nTREE %T%nPARENT %P%nAUTHOR %an <%ae> %aI%nAUTHOR_UNIX %at%nCOMMITTER %cn <%ce> %cI%nCOMMITTER_UNIX %ct%nSUBJECT %s%n' "$GITHUB_SHA" > commit.metadata
 # Extract commit metadata fields for later summary and JSON.
 commit_sha=$(sed -n 's/^COMMIT //p' commit.metadata)
 tree_sha=$(sed -n 's/^TREE //p' commit.metadata)
@@ -405,11 +413,15 @@ checksum_file=checksums.txt
   if [ -f manifest.git-tree ]; then printf '%s  %s\n' "$(sha256_of manifest.git-tree)" manifest.git-tree; fi
   if [ -f go.env.json ]; then printf '%s  %s\n' "$(sha256_of go.env.json)" go.env.json; fi
   printf '%s  %s\n' "$(sha256_of verification.json)" verification.json
+  printf '%s  %s\n' "$SCRIPT_DIGEST" "$(basename "$SCRIPT_PATH")"
 } > "$checksum_file"
 
 # Add checksums.txt as second SLSA subject
 checksums_sha256="$(sha256_of "$checksum_file")"
 printf '%s  %s\n' "$checksums_sha256" "$(basename "$checksum_file")" >> subjects.sha256
+
+# Add packaging script as third SLSA subject (script integrity verification)
+printf '%s  %s\n' "$SCRIPT_DIGEST" "$(basename "$SCRIPT_PATH")" >> subjects.sha256
 echo '::endgroup::'
 
 # Generate base64 subjects for SLSA (ephemeral, for workflow use only)
