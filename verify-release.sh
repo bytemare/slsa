@@ -22,7 +22,7 @@
 #
 # Arguments:
 #   --repo OWNER/REPO    Repository in format owner/repo (e.g., bytemare/slsa)
-#   --tag TAG            Release tag to verify (e.g., 0.4.0)
+#   --tag TAG            Release tag to verify (e.g., 0.2.0)
 #   --mode MODE          Verification mode: quick, full, or reproduce (default: quick)
 #
 # Modes:
@@ -265,7 +265,7 @@ ${YELLOW}Usage:${NC}
 
 ${YELLOW}Required Arguments:${NC}
   --repo OWNER/REPO    Repository in format owner/repo (e.g., bytemare/slsa)
-  --tag TAG            Release tag to verify (e.g., 0.4.0)
+  --tag TAG            Release tag to verify (e.g., 0.2.0)
 
 ${YELLOW}Optional Arguments:${NC}
   --mode MODE          Verification mode (default: quick)
@@ -290,13 +290,13 @@ ${YELLOW}Optional Arguments:${NC}
   --help               Show this help message
 
 Examples:
-  $0 --repo bytemare/slsa --tag 0.4.0
-  $0 --repo bytemare/slsa --tag 0.4.0 --mode full
-  DEBUG=true $0 --repo bytemare/slsa --tag 0.4.0  # Enable debug logging (auto in CI)
-  $0 --repo bytemare/slsa --tag 0.4.0 --mode reproduce
-  $0 --repo bytemare/slsa --tag 0.4.0 --mode vsa
-  $0 --repo bytemare/slsa --tag 0.4.0 --mode full --emit-vsa my.vsa.json --verifier-id https://example.com/verifier
-  $0 --repo bytemare/slsa --tag 0.4.0 --mode full --signer-repo bytemare/slsa
+  $0 --repo bytemare/slsa --tag 0.2.0
+  $0 --repo bytemare/slsa --tag 0.2.0 --mode full
+  DEBUG=true $0 --repo bytemare/slsa --tag 0.2.0  # Enable debug logging (auto in CI)
+  $0 --repo bytemare/slsa --tag 0.2.0 --mode reproduce
+  $0 --repo bytemare/slsa --tag 0.2.0 --mode vsa
+  $0 --repo bytemare/slsa --tag 0.2.0 --mode full --emit-vsa my.vsa.json --verifier-id https://example.com/verifier
+  $0 --repo bytemare/slsa --tag 0.2.0 --mode full --signer-repo bytemare/slsa
 
 Note: VSA emission happens after all checks succeed to preserve a verifier/producer separation. A consumer or CI policy can trust the summary because it was generated post-release by the verification workflow, not during packaging.
 
