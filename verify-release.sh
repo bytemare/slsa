@@ -50,6 +50,7 @@
 # 1. CHECKSUM INTEGRITY
 #    - Verify SHA-256 checksums of source tarball against subjects.sha256
 #    - Verify SHA-256 checksums of checksums.txt against subjects.sha256
+#    - Verify SHA-256 checksums of package-source.sh against subjects.sha256 (if present)
 #    - All checksums must match to ensure artifact integrity
 #
 # 2. SIGNATURE VERIFICATION (Sigstore/Cosign)
@@ -708,10 +709,10 @@ verify_subjects() {
     verify_step "Verifying SLSA subjects structure"
     local subject_count
     subject_count=$(wc -l < subjects.sha256 | tr -d ' ')
-    if [[ "$subject_count" -eq 2 ]]; then
+    if [[ "$subject_count" -eq 3 ]]; then
         verify_ok
     else
-        verify_fail "Expected 2 subjects, found $subject_count"
+        verify_fail "Expected 3 subjects, found $subject_count"
         return 1
     fi
 
@@ -741,7 +742,7 @@ verify_checksums_manifest() {
     local computed_hash
     computed_hash=$(sha256sum -- checksums.txt | awk '{print $1}')
     local expected_hash
-    expected_hash=$(tail -n1 subjects.sha256 | awk '{print $1}')
+    expected_hash=$(sed -n '2p' subjects.sha256 | awk '{print $1}')
     if [[ "$computed_hash" == "$expected_hash" ]]; then
         verify_ok
     else
@@ -749,6 +750,30 @@ verify_checksums_manifest() {
         return 1
     fi
 
+    return 0
+}
+
+verify_packaging_script() {
+    verify_step "Verifying packaging script integrity"
+    
+    local script_file
+    script_file=$(find . -maxdepth 1 -name "package-source.sh" -type f -print -quit)
+    if [[ ! -f "$script_file" ]]; then
+        verify_fail "package-source.sh not found in release assets"
+        return 1
+    fi
+    
+    local computed_hash
+    computed_hash=$(sha256sum -- "$script_file" | awk '{print $1}')
+    local expected_hash
+    expected_hash=$(sed -n '3p' subjects.sha256 | awk '{print $1}')
+    if [[ "$computed_hash" == "$expected_hash" ]]; then
+        verify_ok
+    else
+        verify_fail "Packaging script checksum mismatch"
+        return 1
+    fi
+    
     return 0
 }
 
@@ -861,6 +886,7 @@ run_verification() {
     verify_subjects || exit_code=$EXIT_VERIFICATION_FAILED
     verify_tarball_checksum || exit_code=$EXIT_VERIFICATION_FAILED
     verify_checksums_manifest || exit_code=$EXIT_VERIFICATION_FAILED
+    verify_packaging_script || exit_code=$EXIT_VERIFICATION_FAILED
     verify_signatures || exit_code=$EXIT_VERIFICATION_FAILED
 
     if [[ "$MODE" == "full" ]]; then
@@ -1243,7 +1269,7 @@ info() { printf '%-50s' \"\$1...\"; }
 ok() { echo ' OK'; }
 fail() {
     echo ' FAIL'
-    if [[ -n \"\${1:-}\" ]]; then echo \"  Error: \${1}\" >&2; fi
+    if [[ -n \${1:-} ]]; then echo \"  Error: \$1\" >&2; fi
     exit 1
 }
 testDirs() {
@@ -1283,7 +1309,7 @@ if [[ "$use_release_script" == 'true' ]]; then
     if [[ -f scripts/package-source.sh ]]; then
         release_sha=\$(sha256sum /work/package-source.sh | awk '{print \$1}')
         repo_sha=\$(sha256sum scripts/package-source.sh | awk '{print \$1}')
-        if [[ \"\$release_sha\" != \"\$repo_sha\" ]]; then
+        if [[ \$release_sha != \$repo_sha ]]; then
             echo 'Script integrity violation: release asset differs from tagged repo' >&2
             echo '  Release asset: '\$release_sha >&2
             echo '  Repository:    '\$repo_sha >&2
@@ -1299,8 +1325,6 @@ else
     fail 'Packaging script not found in release assets or repository'
 fi
 
-testDirs
-
 # Run packaging script
 info 'Running packaging script'
 if ! bash \"\$PACKAGING_SCRIPT\" >/work/packaging.log 2>&1; then
@@ -1314,7 +1338,7 @@ ok
 # Compare rebuilt artifact against published
 info 'Calculating rebuilt artifact digest'
 rebuilt_path=\$(find dist -maxdepth 1 -name '*.tar.gz' -print -quit)
-if [[ -z \"\$rebuilt_path\" ]]; then
+if [[ -z \$rebuilt_path ]]; then
     find dist -maxdepth 2 -type f -print >&2 || true
     fail 'Rebuilt tarball not found in dist/'
 fi
@@ -1323,10 +1347,10 @@ ok
 
 info 'Comparing with published artifact'
 published_digest=\$(sha256sum /input/artifact.tar.gz | awk '{print \$1}')
-if [[ \"\$rebuilt_digest\" != \"\$published_digest\" ]]; then
+if [[ \$rebuilt_digest != \$published_digest ]]; then
     echo ' FAIL' >&2
-    echo \"  Published:  \$published_digest\" >&2
-    echo \"  Rebuilt:    \$rebuilt_digest\" >&2
+    echo '  Published:  '\$published_digest >&2
+    echo '  Rebuilt:    '\$rebuilt_digest >&2
     fail 'Digest mismatch - artifact is NOT reproducible'
 fi
 ok

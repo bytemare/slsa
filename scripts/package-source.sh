@@ -409,11 +409,15 @@ checksum_file=checksums.txt
   if [ -f manifest.git-tree ]; then printf '%s  %s\n' "$(sha256_of manifest.git-tree)" manifest.git-tree; fi
   if [ -f go.env.json ]; then printf '%s  %s\n' "$(sha256_of go.env.json)" go.env.json; fi
   printf '%s  %s\n' "$(sha256_of verification.json)" verification.json
+  printf '%s  %s\n' "$SCRIPT_DIGEST" "$(basename "$SCRIPT_PATH")"
 } > "$checksum_file"
 
 # Add checksums.txt as second SLSA subject
 checksums_sha256="$(sha256_of "$checksum_file")"
 printf '%s  %s\n' "$checksums_sha256" "$(basename "$checksum_file")" >> subjects.sha256
+
+# Add packaging script as third SLSA subject (script integrity verification)
+printf '%s  %s\n' "$SCRIPT_DIGEST" "$(basename "$SCRIPT_PATH")" >> subjects.sha256
 echo '::endgroup::'
 
 # Generate base64 subjects for SLSA (ephemeral, for workflow use only)
