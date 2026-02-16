@@ -1233,17 +1233,28 @@ set -euo pipefail
 umask 022
 
 export HOME=/work
-export GIT_CONFIG_GLOBAL=/dev/null
-export GIT_CONFIG_SYSTEM=/dev/null
+export GIT_CONFIG_GLOBAL=/work/.gitconfig
+export GIT_CONFIG_SYSTEM=/work/.gitconfig-system
+export GIT_CONFIG_NOSYSTEM=1
 export GIT_TERMINAL_PROMPT=0
 
 step() { printf '\n--- %s ---\n' \"\$1\"; }
-info() { printf '% -50s' \"\$1...\"; }
+info() { printf '%-50s' \"\$1...\"; }
 ok() { echo ' OK'; }
 fail() {
     echo ' FAIL'
     if [[ -n \"\${1:-}\" ]]; then echo \"  Error: \${1}\" >&2; fi
     exit 1
+}
+testDirs() {
+    test -r /repo/.git/HEAD || {
+        echo 'Cannot read /repo mount' >&2
+        exit 1
+    }
+    test -w /work || {
+        echo 'Cannot write /work' >&2
+        exit 1
+    }
 }
 
 step 'Rebuilding artifact in hermetic container'
@@ -1251,11 +1262,10 @@ step 'Rebuilding artifact in hermetic container'
 # Copy repo to writable location (mounted read-only)
 info 'Preparing build environment'
 
-test -r /repo/.git/HEAD || { echo "Cannot read /repo mount" >&2; exit 1; }
-test -w /work || { echo "Cannot write /work" >&2; exit 1; }
+testDirs
 
 mkdir -p /work/repo
-( cd /repo && tar -cf - . ) | ( cd /work/repo && tar -xf - --no-same-owner )
+( cd /repo && tar -cf - . ) | ( cd /work/repo && tar -xf - --no-same-owner --warning=no-timestamp )
 cd /work/repo
 # Fix git ownership issue when copying between containers/users
 git config --global --add safe.directory /work/repo
@@ -1263,11 +1273,23 @@ ok
 
 # Determine which packaging script to use
 PACKAGING_SCRIPT=''
-if [[ '$use_release_script' == 'true' ]]; then
+if [[ "$use_release_script" == 'true' ]]; then
     info 'Using packaging script from release assets'
     cp /input/package-source.sh /work/package-source.sh
     chmod +x /work/package-source.sh
     PACKAGING_SCRIPT='/work/package-source.sh'
+    
+    # Cross-verify: if repo also has the script, they must match
+    if [[ -f scripts/package-source.sh ]]; then
+        release_sha=\$(sha256sum /work/package-source.sh | awk '{print \$1}')
+        repo_sha=\$(sha256sum scripts/package-source.sh | awk '{print \$1}')
+        if [[ \"\$release_sha\" != \"\$repo_sha\" ]]; then
+            echo 'Script integrity violation: release asset differs from tagged repo' >&2
+            echo '  Release asset: '\$release_sha >&2
+            echo '  Repository:    '\$repo_sha >&2
+            fail 'This is a potential supply chain attack indicator.'
+        fi
+    fi
     ok
 elif [[ -f scripts/package-source.sh ]]; then
     info 'Using packaging script from repository'
@@ -1277,8 +1299,7 @@ else
     fail 'Packaging script not found in release assets or repository'
 fi
 
-test -r /repo/.git/HEAD || { echo "Cannot read /repo mount" >&2; exit 1; }
-test -w /work || { echo "Cannot write /work" >&2; exit 1; }
+testDirs
 
 # Run packaging script
 info 'Running packaging script'
