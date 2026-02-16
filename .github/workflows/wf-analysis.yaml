@@ -27,7 +27,7 @@ permissions: {}
 
 jobs:
   Lint:
-    uses: bytemare/workflows/.github/workflows/lint.yaml@f6075d878a735833460c160ce4ee468026e13da8
+    uses: bytemare/workflows/.github/workflows/suite-lint.yaml@f6075d878a735833460c160ce4ee468026e13da8
     permissions:
       contents: read
       packages: read
