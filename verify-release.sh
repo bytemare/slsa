@@ -1299,7 +1299,7 @@ ok
 
 # Determine which packaging script to use
 PACKAGING_SCRIPT=''
-if [[ "$use_release_script" == 'true' ]]; then
+if [[ $use_release_script == 'true' ]]; then
     info 'Using packaging script from release assets'
     cp /input/package-source.sh /work/package-source.sh
     chmod +x /work/package-source.sh
