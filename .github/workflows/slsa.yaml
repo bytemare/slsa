@@ -398,10 +398,11 @@ jobs:
           echo "[INFO] Generating SBOM with cdxgen container: ${image}" >&2
           docker run --rm \
             -v "$PWD/sbom-workspace:/app:ro" \
+            -v "$PWD:/output" \
             -w /tmp \
             "${image}" \
-            -o /tmp/sbom.cdx.json \
-            /app > sbom.cdx.json
+            -o /output/sbom.cdx.json \
+            /app
           
           echo "[INFO] SBOM generated successfully" >&2
 
