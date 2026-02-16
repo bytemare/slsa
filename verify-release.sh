@@ -1208,7 +1208,15 @@ run_repro_check() {
     fi
 
     # Run container with network isolation and mounted files
-    if ! docker run --rm --network none "${mount_args[@]}" -w /work \
+    if ! docker run \
+        --rm \
+        --network none \
+        --cap-drop=ALL \
+        --security-opt=no-new-privileges \
+        --tmpfs /work:rw,nosuid,nodev,noexec \
+        -v "$repo_tmp:/repo:ro" \
+        -v "$artifact_tmp:/input/artifact.tar.gz:ro" \
+        "${mount_args[@]}" -w /work \
         -e "GITHUB_SHA=$commit_sha" \
         -e "GITHUB_REPOSITORY=$REPO" \
         -e "GITHUB_REF_NAME=$TAG" \
@@ -1236,7 +1244,8 @@ step 'Rebuilding artifact in hermetic container'
 
 # Copy repo to writable location (mounted read-only)
 info 'Preparing build environment'
-cp -a /repo /work/repo
+mkdir -p /work/repo
+( cd /repo && tar -cf - . ) | ( cd /work/repo && tar -xf - --no-same-owner )
 cd /work/repo
 # Fix git ownership issue when copying between containers/users
 git config --global --add safe.directory /work/repo
