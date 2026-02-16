@@ -303,7 +303,10 @@ echo '::endgroup::'
 
 echo '::group::Generate per-file manifest'
 log "Generating per-file content manifest"
-git ls-files -z | sort -z | while IFS= read -r -d '' f; do printf '%s  %s\n' "$(sha256_of "$f")" "$f"; done > manifest.files.sha256
+# LC_ALL=C is already set globally, but ensure it's used here for consistent sorting regardless of locale. Use null-delimited output to safely handle all filenames.
+git ls-files -z | LC_ALL=C sort -z | while IFS= read -r -d '' f; do
+  printf '%s  %s\n' "$(sha256_of "$f")" "$f"
+done > manifest.files.sha256
 echo '::endgroup::'
 
 echo '::group::Commit metadata'

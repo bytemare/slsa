@@ -1241,8 +1241,6 @@ run_repro_check() {
         --security-opt=no-new-privileges \
         --user "$(id -u):$(id -g)" \
         --tmpfs /work:rw,nosuid,nodev,mode=700,uid="$(id -u)",gid="$(id -g)" \
-        -v "$repo_tmp:/repo:ro" \
-        -v "$artifact_tmp:/input/artifact.tar.gz:ro" \
         "${mount_args[@]}" -w /work \
         -e "GITHUB_SHA=$commit_sha" \
         -e "GITHUB_REPOSITORY=$REPO" \
@@ -1258,9 +1256,14 @@ run_repro_check() {
 set -euo pipefail
 umask 022
 
+# Set up a minimal home directory for git config to avoid warnings/errors about unsafe repositories or missing config
 export HOME=/work
-export GIT_CONFIG_GLOBAL=/work/.gitconfig
-export GIT_CONFIG_SYSTEM=/work/.gitconfig-system
+mkdir -p "$HOME"
+: > "$HOME/.gitconfig"
+: > "$HOME/.gitconfig-system"
+
+export GIT_CONFIG_GLOBAL="$HOME/.gitconfig"
+export GIT_CONFIG_SYSTEM="$HOME/.gitconfig-system"
 export GIT_CONFIG_NOSYSTEM=1
 export GIT_TERMINAL_PROMPT=0
 
