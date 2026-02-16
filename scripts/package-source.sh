@@ -250,8 +250,12 @@ if ! git diff --quiet --ignore-submodules --exit-code || \
    ! git diff --quiet --cached --ignore-submodules --exit-code; then
   fail "$EXIT_GIT_ERROR" "Dirty worktree or index, aborting"
 fi
-# Use commit timestamp to seed deterministic tooling.
-SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_SHA")"
+# Deterministic timestamp anchor (commit time of the exact subject) to seed deterministic tooling.
+# Allow override if caller sets SOURCE_DATE_EPOCH explicitly.
+if [[ -z "${SOURCE_DATE_EPOCH:-}" ]]; then
+  SOURCE_DATE_EPOCH="$(git show -s --no-show-signature --format=%ct "$GITHUB_SHA")"
+fi
+[[ "${SOURCE_DATE_EPOCH}" =~ ^[0-9]+$ ]] || fail "$EXIT_GENERAL_ERROR" "SOURCE_DATE_EPOCH is not numeric"
 export SOURCE_DATE_EPOCH
 # Sanitize naming components using the sanitize function defined above.
 REPO_SAFE="$(sanitize "${GITHUB_REPOSITORY#*/}")"
@@ -304,7 +308,7 @@ echo '::endgroup::'
 
 echo '::group::Commit metadata'
 # Commit metadata snapshot (no separate .sha256 file as it's derivable from commit)
-git show -s --format='format:COMMIT %H%nTREE %T%nPARENT %P%nAUTHOR %an <%ae> %ad%nCOMMITTER %cn <%ce> %cd%nSUBJECT %s%n' "$GITHUB_SHA" > commit.metadata
+git show -s --no-show-signature --date=iso-strict --format='format:COMMIT %H%nTREE %T%nPARENT %P%nAUTHOR %an <%ae> %aI%nAUTHOR_UNIX %at%nCOMMITTER %cn <%ce> %cI%nCOMMITTER_UNIX %ct%nSUBJECT %s%n' "$GITHUB_SHA" > commit.metadata
 # Extract commit metadata fields for later summary and JSON.
 commit_sha=$(sed -n 's/^COMMIT //p' commit.metadata)
 tree_sha=$(sed -n 's/^TREE //p' commit.metadata)

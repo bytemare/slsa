@@ -1232,6 +1232,11 @@ run_repro_check() {
 set -euo pipefail
 umask 022
 
+export HOME=/work
+export GIT_CONFIG_GLOBAL=/dev/null
+export GIT_CONFIG_SYSTEM=/dev/null
+export GIT_TERMINAL_PROMPT=0
+
 step() { printf '\n--- %s ---\n' \"\$1\"; }
 info() { printf '% -50s' \"\$1...\"; }
 ok() { echo ' OK'; }
@@ -1245,6 +1250,10 @@ step 'Rebuilding artifact in hermetic container'
 
 # Copy repo to writable location (mounted read-only)
 info 'Preparing build environment'
+
+test -r /repo/.git/HEAD || { echo "Cannot read /repo mount" >&2; exit 1; }
+test -w /work || { echo "Cannot write /work" >&2; exit 1; }
+
 mkdir -p /work/repo
 ( cd /repo && tar -cf - . ) | ( cd /work/repo && tar -xf - --no-same-owner )
 cd /work/repo
@@ -1268,6 +1277,9 @@ else
     fail 'Packaging script not found in release assets or repository'
 fi
 
+test -r /repo/.git/HEAD || { echo "Cannot read /repo mount" >&2; exit 1; }
+test -w /work || { echo "Cannot write /work" >&2; exit 1; }
+
 # Run packaging script
 info 'Running packaging script'
 if ! bash \"\$PACKAGING_SCRIPT\" >/work/packaging.log 2>&1; then
@@ -1282,6 +1294,7 @@ ok
 info 'Calculating rebuilt artifact digest'
 rebuilt_path=\$(find dist -maxdepth 1 -name '*.tar.gz' -print -quit)
 if [[ -z \"\$rebuilt_path\" ]]; then
+    find dist -maxdepth 2 -type f -print >&2 || true
     fail 'Rebuilt tarball not found in dist/'
 fi
 rebuilt_digest=\$(sha256sum \"\$rebuilt_path\" | awk '{print \$1}')
