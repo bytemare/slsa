@@ -395,13 +395,27 @@ jobs:
           version="${CDXGEN_VERSION:-v12.0.0}"
           image="ghcr.io/cyclonedx/cdxgen:${version}"
           
+          # Create output directory with appropriate permissions
+          mkdir -p sbom-output
+          chmod 777 sbom-output
+          
           echo "[INFO] Generating SBOM with cdxgen container: ${image}" >&2
           docker run --rm \
             -v "$PWD/sbom-workspace:/app:ro" \
+            -v "$PWD/sbom-output:/output" \
             -w /tmp \
             "${image}" \
-            -o /tmp/sbom.cdx.json \
-            /app > sbom.cdx.json
+            -o /output/sbom.cdx.json \
+            /app
+          
+          # Move the SBOM to the expected location
+          mv sbom-output/sbom.cdx.json sbom.cdx.json
+          
+          # Validate SBOM was created and is not empty
+          if [[ ! -s sbom.cdx.json ]]; then
+            echo "[ERROR] SBOM file is missing or empty" >&2
+            exit 1
+          fi
           
           echo "[INFO] SBOM generated successfully" >&2
 
