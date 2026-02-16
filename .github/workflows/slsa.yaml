@@ -833,6 +833,7 @@ jobs:
             objects.githubusercontent.com:443
             pipelines.actions.githubusercontent.com:443
             rekor.sigstore.dev:443
+            release-assets.githubusercontent.com:443
             storage.googleapis.com:443
             timestamp.sigstore.dev:443
             tmaproduction.blob.core.windows.net:443
