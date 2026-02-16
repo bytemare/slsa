@@ -626,7 +626,27 @@ jobs:
       - name: Prepare packaging script for release
         run: |
           set -euo pipefail
+          
+          # Verify source file exists
+          if [[ ! -f slsa-workflow/scripts/package-source.sh ]]; then
+            echo "[ERROR] Source file not found: slsa-workflow/scripts/package-source.sh" >&2
+            ls -la slsa-workflow/scripts/ || echo "slsa-workflow/scripts/ directory not found"
+            ls -la slsa-workflow/ || echo "slsa-workflow/ directory not found"
+            pwd
+            exit 1
+          fi
+          
+          # Copy to package directory
           cp slsa-workflow/scripts/package-source.sh package/package-source.sh
+          
+          # Verify destination file was created
+          if [[ ! -f package/package-source.sh ]]; then
+            echo "[ERROR] Failed to create package/package-source.sh" >&2
+            exit 1
+          fi
+          
+          echo "[INFO] Successfully prepared package-source.sh for release"
+          ls -la package/package-source.sh
 
       - name: Create/Update GitHub Release
         if: ${{ !inputs.dry_run && inputs.create_release }}
