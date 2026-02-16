@@ -636,6 +636,7 @@ download_artifacts() {
                 "sbom.cdx.json"
                 "verification.json"
                 "manifest.files.sha256"
+                "package-source.sh"
                 "verification-summary.attestation.json"
                 "verification-summary.attestation.json.bundle"
             )
@@ -663,6 +664,7 @@ download_artifacts() {
             download_release_pattern "sbom.cdx.json" false
             download_release_pattern "verification.json" false
             download_release_pattern "manifest.files.sha256" false
+            download_release_pattern "package-source.sh" false
             download_release_pattern "verification-summary.attestation.json" false
             download_release_pattern "verification-summary.attestation.json.bundle" false
         fi
