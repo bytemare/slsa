@@ -115,7 +115,8 @@ For detailed configuration options, see [Release - How to Use the Workflow](#rel
 ### For Software Consumers
 
 - ✅ **Verification Script** — Download and run `verify-release.sh` to independently verify any release
-- 🔍 **Multiple Verification Modes** — Quick (checksums), Full (provenance + SBOM), Reproduce (container rebuild)
+- 🔍 **Multiple Verification Modes** — Quick (checksums), Full (provenance + SBOM), Reproduce (hermetic container rebuild with network isolation)
+- 🔒 **Defense-in-Depth Security** — Reproduce mode uses network-isolated containers with read-only mounts, non-root execution, and cross-verification
 - 🏷️ **Verification Summary Attestation (VSA)** — Signed proof that verification passed, for your own audit trail
 - 📋 **Clear Output** — One-line pass/fail with detailed logs available
 

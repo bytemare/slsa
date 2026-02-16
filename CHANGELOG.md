@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 For releases prior to this changelog, see [GitHub Releases](https://github.com/bytemare/ecc/releases).
 
+## v0.4.0 - 16/2/2026
+
+### Changed
+- **BREAKING**: SLSA subjects structure changed from 2 to 3 subjects
+  - Added package-source.sh as third subject for script integrity verification
+  - Checksums.txt moved to second line (use `sed -n '2p'` instead of `tail -n1`)
+  - Documentation and verification commands updated accordingly
+
+### Added
+- Cross-verification in reproduce mode: release asset script validated against repository version
+- Script integrity verification step added to manual verification guide
+- Hermetic container execution for reproduce mode with defense-in-depth isolation:
+  - Network isolation (`--network none`) prevents external communication during rebuild
+  - Non-root execution with explicit UID/GID mapping
+  - Read-only mounts for all inputs (repository, artifacts, scripts)
+  - Security hardening: `--cap-drop=ALL`, `--security-opt=no-new-privileges`
+  - Writable tmpfs with proper ownership for build workspace
+  - Git config isolation to prevent configuration leakage
+
+### Security
+- Enhanced packaging script integrity with cross-verification between release assets and repository
+- Reproduce mode now fully hermetic: all downloads and validations on host before container execution
+- Container cannot access network or modify any input files during reproducibility check
+
+### Fixed
+- Embedded Docker script syntax errors (quote escaping in test commands and variable expansion)
+- Git config permission issues in reproduce mode (use writable paths instead of /dev/null)
+- Suppressed tar future timestamp warnings with --warning=no-timestamp flag
+- Variable quoting in [[ ]] tests (shellcheck SC2027 compliance)
+
 ## v0.3.0 - 12/2/2026
 
 ### Changed

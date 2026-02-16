@@ -502,6 +502,23 @@ This automatically:
 3. Runs rebuild in network-isolated container with read-only mounts
 4. Compares rebuilt artifact against published version
 
+**Hermetic Execution Model:**
+
+The reproduce mode uses defense-in-depth container isolation to ensure a trustworthy rebuild:
+
+- **Network Isolation**: Container runs with `--network none` to prevent any external communication
+- **Non-Root Execution**: Container runs as your user UID/GID, not as root
+- **Read-Only Mounts**: All inputs (repository, artifacts, scripts) mounted read-only to prevent tampering
+- **Security Hardening**: All capabilities dropped (`--cap-drop=ALL`), no privilege escalation allowed
+- **Cross-Verification**: Release asset script hash compared against repository version before execution
+- **Pre-Validation**: All downloads and integrity checks performed on host before entering container
+
+This model ensures the rebuild cannot:
+- Download malicious dependencies during build
+- Modify original inputs or artifacts
+- Execute with elevated privileges
+- Communicate with external systems
+
 ### Manual Lean Mode Reproduction
 
 ```bash
