@@ -623,6 +623,11 @@ jobs:
           set -euo pipefail
           cosign sign-blob --yes --bundle package/checksums.txt.bundle package/checksums.txt
 
+      - name: Prepare packaging script for release
+        run: |
+          set -euo pipefail
+          cp slsa-workflow/scripts/package-source.sh package/package-source.sh
+
       - name: Create/Update GitHub Release
         if: ${{ !inputs.dry_run && inputs.create_release }}
         uses: softprops/action-gh-release@e798e6a1ede8d07b74ac4cdac6bdfa4cc1653907
@@ -640,7 +645,7 @@ jobs:
             package/manifest.files.sha256
             package/commit.metadata
             package/build.env
-            slsa-workflow/scripts/package-source.sh
+            package/package-source.sh
             package/verification.json
 
       - name: Upload artifacts (PR dry run)
@@ -657,7 +662,7 @@ jobs:
             package/manifest.files.sha256
             package/commit.metadata
             package/build.env
-            slsa-workflow/scripts/package-source.sh
+            package/package-source.sh
             package/verification.json
 
   # ===============================================================
