@@ -343,6 +343,7 @@ jobs:
             github.com:443
             ghcr.io:443
             pkg-containers.githubusercontent.com:443
+            proxy.golang.org:443
             release-assets.githubusercontent.com:443
 
       - name: Download packaged source
