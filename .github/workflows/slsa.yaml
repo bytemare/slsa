@@ -335,14 +335,14 @@ jobs:
         uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e
         with:
           disable-sudo: true
-          egress-policy: audit
+          egress-policy: block
           # Docker container pull for cdxgen (cached via actions/cache)
           allowed-endpoints: >
             api.github.com:443
             artifactcache.actions.githubusercontent.com:443
             files.pythonhosted.org:443
-            github.com:443
             ghcr.io:443
+            github.com:443
             pkg-containers.githubusercontent.com:443
             proxy.golang.org:443
             pypi.org:443
