@@ -3,7 +3,7 @@
   "tools": {
     "cosign": {
       "$comment": "Sigstore keyless signing tool for SLSA attestations",
-      "version": "v3.0.4",
+      "version": "v3.1.3",
       "sha256": "10dab2fd2170b5aa0d5c0673a9a2793304960220b314f6a873bf39c2f08287aa"
     },
     "gh": {
