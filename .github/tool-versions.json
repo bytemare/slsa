@@ -29,7 +29,7 @@
     "builder-image": {
       "$comment": "Container image for reproducible builds. Digest MUST match verify-release.sh REPRO_IMAGE_DEFAULT",
       "image": "golang",
-      "tag": "1.25-bookworm",
+      "tag": "1.27-bookworm",
       "digest": "sha256:51b6b12427dc03451c24f7fc996c43a20e8a8e56f0849dd0db6ff6e9225cc892"
     }
   }
