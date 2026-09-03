@@ -8,7 +8,7 @@
     },
     "gh": {
       "$comment": "GitHub CLI for release management and API operations",
-      "version": "v2.86.0",
+      "version": "v2.100.0",
       "sha256": "f3b08bd6a28420cc2229b0a1a687fa25f2b838d3f04b297414c1041ca68103c7"
     },
     "jq": {
